@@ -7,6 +7,7 @@ from app.models import User
 from app.schemas import User as UserSchema, UserUpdate
 from app.dependencies import get_current_user
 from app.utils import sanitize_name
+from app.redis_client import invalidate_users_cache
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -45,6 +46,9 @@ async def update_profile(
     await db.commit()
     await db.refresh(current_user)
     
+    # Invalidate users cache since user data was updated
+    await invalidate_users_cache()
+    
     return current_user
 
 
@@ -74,6 +78,9 @@ async def refresh_avatar(
         
         await db.commit()
         await db.refresh(current_user)
+        
+        # Invalidate users cache since user data was updated
+        await invalidate_users_cache()
         
         return current_user
         

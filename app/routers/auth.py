@@ -7,7 +7,7 @@ from app.models import User
 from app.schemas import AuthRequest, TokenResponse, RefreshTokenRequest
 from app.utils import create_access_token, create_refresh_token, verify_token, generate_temp_code, sanitize_name
 from app.telegram_bot import send_code_to_user
-from app.redis_client import set_otp_code, get_otp_code, delete_otp_code
+from app.redis_client import set_otp_code, get_otp_code, delete_otp_code, invalidate_users_cache
 from pydantic import BaseModel
 import os
 from telegram import Bot
@@ -105,6 +105,9 @@ async def login(auth_request: AuthRequest, db: AsyncSession = Depends(get_db)):
         
         await db.commit()
         await db.refresh(user)
+        
+        # Invalidate users cache since user data was updated
+        await invalidate_users_cache()
         
     except Exception as e:
         print(f"Error refreshing user profile on login: {e}")

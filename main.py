@@ -4,16 +4,19 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 from app.database import init_db
-from app.routers import auth, profile
+from app.routers import auth, profile, education, quiz, grammar_topics, admin, progress, leaderboard, translation
 from app.telegram_bot import start_bot
 from app.redis_client import close_redis
+from app.routers.leaderboard import start_leaderboard_scheduler, stop_leaderboard_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     await start_bot()
+    start_leaderboard_scheduler()
     yield
+    stop_leaderboard_scheduler()
     await close_redis()
 
 
@@ -34,6 +37,13 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
+app.include_router(education.router, prefix="/api/education", tags=["education"])
+app.include_router(quiz.router, prefix="/api/quiz", tags=["quiz"])
+app.include_router(grammar_topics.router, prefix="/api/grammar", tags=["grammar"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(progress.router, prefix="/api/progress", tags=["progress"])
+app.include_router(leaderboard.router, prefix="/api/leaderboard", tags=["leaderboard"])
+app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
 
 
 @app.get("/")
