@@ -300,3 +300,85 @@ class TranslationResponse(BaseModel):
     target_language: str
     output_text: str
     from_cache: bool
+
+
+# Subscription Schemas
+class UserSubscriptionBase(BaseModel):
+    start_date: datetime
+    end_date: datetime
+    amount: float
+    currency: str = "USD"
+    notes: Optional[str] = None
+
+
+class UserSubscriptionCreate(UserSubscriptionBase):
+    user_id: int
+
+
+class UserSubscriptionUpdate(BaseModel):
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class UserSubscription(UserSubscriptionBase):
+    id: int
+    user_id: int
+    is_active: bool
+    created_by_admin_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SubscriptionStatus(BaseModel):
+    has_premium: bool
+    subscription: Optional[dict] = None
+    message: str
+
+
+class FinancialStats(BaseModel):
+    total_revenue: float
+    monthly_revenue: float
+    yearly_revenue: float
+    active_subscriptions: int
+    total_paid_subscriptions: int
+    average_subscription_value: float
+    revenue_by_month: List[dict]
+
+
+# Business Profile Schemas
+class BusinessProfileBase(BaseModel):
+    telegram_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    website_url: Optional[str] = None
+    support_email: Optional[str] = None
+    required_app_version: str = "1.0.0"
+    company_name: Optional[str] = None
+
+
+class BusinessProfileCreate(BusinessProfileBase):
+    pass
+
+
+class BusinessProfileUpdate(BaseModel):
+    telegram_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    website_url: Optional[str] = None
+    support_email: Optional[str] = None
+    required_app_version: Optional[str] = None
+    company_name: Optional[str] = None
+
+
+class BusinessProfile(BusinessProfileBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

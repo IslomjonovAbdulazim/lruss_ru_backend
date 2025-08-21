@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Boolean, ForeignKey, Enum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Boolean, ForeignKey, Enum, UniqueConstraint, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -143,3 +143,37 @@ class Translation(Base):
 
     # Unique constraint: same input + target language should return cached result
     __table_args__ = (UniqueConstraint('input_text', 'target_language', name='unique_translation'),)
+
+
+class UserSubscription(Base):
+    __tablename__ = "user_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    start_date = Column(DateTime(timezone=True), nullable=False)
+    end_date = Column(DateTime(timezone=True), nullable=False)
+    amount = Column(Float, nullable=False)  # Payment amount
+    currency = Column(String, default="USD", nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_by_admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    notes = Column(String, nullable=True)  # Admin notes
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    created_by = relationship("User", foreign_keys=[created_by_admin_id])
+
+
+class BusinessProfile(Base):
+    __tablename__ = "business_profile"
+
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_url = Column(String, nullable=True)
+    instagram_url = Column(String, nullable=True)
+    website_url = Column(String, nullable=True)
+    support_email = Column(String, nullable=True)
+    required_app_version = Column(String, nullable=False, default="1.0.0")
+    company_name = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
