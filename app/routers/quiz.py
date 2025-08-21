@@ -27,7 +27,7 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
         .order_by(Pack.id)
     )
     word_packs = word_packs_result.scalars().all()
-    
+
     # Get all grammar packs with their grammars
     grammar_packs_result = await db.execute(
         select(Pack)
@@ -36,7 +36,7 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
         .order_by(Pack.id)
     )
     grammar_packs = grammar_packs_result.scalars().all()
-    
+
     # Convert to dict format for cache
     word_packs_data = []
     for pack in word_packs:
@@ -51,7 +51,7 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
             "words": [],
             "grammars": []
         }
-        
+
         for word in pack.words:
             word_dict = {
                 "id": word.id,
@@ -63,9 +63,9 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
                 "updated_at": word.updated_at
             }
             pack_dict["words"].append(word_dict)
-        
+
         word_packs_data.append(pack_dict)
-    
+
     grammar_packs_data = []
     for pack in grammar_packs:
         pack_dict = {
@@ -79,7 +79,7 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
             "words": [],
             "grammars": []
         }
-        
+
         for grammar in pack.grammars:
             # Parse options from JSON string
             options = None
@@ -88,7 +88,7 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
                     options = json.loads(grammar.options)
                 except:
                     options = None
-            
+
             grammar_dict = {
                 "id": grammar.id,
                 "pack_id": grammar.pack_id,
@@ -101,9 +101,9 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
                 "updated_at": grammar.updated_at
             }
             pack_dict["grammars"].append(grammar_dict)
-        
+
         grammar_packs_data.append(pack_dict)
-    
+
     return {
         "word_packs": word_packs_data,
         "grammar_packs": grammar_packs_data
@@ -117,19 +117,21 @@ async def update_quiz_cache(db: AsyncSession):
     return quiz_data
 
 
+# SINGLE GET ENDPOINT FOR ALL QUIZ DATA
 @router.get("/quiz", response_model=QuizResponse)
-async def get_quiz_data(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get all quiz data from cache, fallback to database if not cached"""
+async def get_quiz(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get all quiz data: words and grammars with pack names from cache"""
     # Try to get from cache first
     cached_data = await get_quiz_cache()
     if cached_data:
         return cached_data
-    
+
     # If not in cache, get from database and cache it
     quiz_data = await update_quiz_cache(db)
     return quiz_data
 
 
+# WORD CRUD
 @router.post("/words", response_model=WordSchema, status_code=status.HTTP_201_CREATED)
 async def create_word(word: WordCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new word"""
@@ -140,45 +142,30 @@ async def create_word(word: WordCreate, admin_user: User = Depends(get_admin_use
         raise HTTPException(status_code=404, detail="Pack not found")
     if pack.type != PackType.WORD:
         raise HTTPException(status_code=400, detail="Pack is not a word pack")
-    
+
     db_word = Word(**word.dict())
     db.add(db_word)
     await db.commit()
     await db.refresh(db_word)
-    
-    # Update cache
     await update_quiz_cache(db)
-    
     return db_word
 
 
-@router.get("/words/{word_id}", response_model=WordSchema)
-async def get_word(word_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get a specific word by ID"""
-    result = await db.execute(select(Word).where(Word.id == word_id))
-    word = result.scalar_one_or_none()
-    if not word:
-        raise HTTPException(status_code=404, detail="Word not found")
-    return word
-
-
 @router.put("/words/{word_id}", response_model=WordSchema)
-async def update_word(word_id: int, word_update: WordUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+async def update_word(word_id: int, word_update: WordUpdate, admin_user: User = Depends(get_admin_user),
+                      db: AsyncSession = Depends(get_db)):
     """Update a word"""
     result = await db.execute(select(Word).where(Word.id == word_id))
     word = result.scalar_one_or_none()
     if not word:
         raise HTTPException(status_code=404, detail="Word not found")
-    
+
     for field, value in word_update.dict(exclude_unset=True).items():
         setattr(word, field, value)
-    
+
     await db.commit()
     await db.refresh(word)
-    
-    # Update cache
     await update_quiz_cache(db)
-    
     return word
 
 
@@ -189,18 +176,17 @@ async def delete_word(word_id: int, admin_user: User = Depends(get_admin_user), 
     word = result.scalar_one_or_none()
     if not word:
         raise HTTPException(status_code=404, detail="Word not found")
-    
+
     await db.delete(word)
     await db.commit()
-    
-    # Update cache
     await update_quiz_cache(db)
-    
     return {"message": "Word deleted successfully"}
 
 
+# GRAMMAR CRUD
 @router.post("/grammars", response_model=GrammarSchema, status_code=status.HTTP_201_CREATED)
-async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_admin_user),
+                         db: AsyncSession = Depends(get_db)):
     """Create a new grammar question"""
     # Check if pack exists and is a grammar pack
     pack_result = await db.execute(select(Pack).where(Pack.id == grammar.pack_id))
@@ -209,12 +195,12 @@ async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_
         raise HTTPException(status_code=404, detail="Pack not found")
     if pack.type != PackType.GRAMMAR:
         raise HTTPException(status_code=400, detail="Pack is not a grammar pack")
-    
+
     # Validate based on grammar type
     if grammar.type == "fill":
         if not grammar.question_text or not grammar.options or grammar.correct_option is None:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Fill type requires question_text, options, and correct_option"
             )
         if len(grammar.options) != 4:
@@ -224,11 +210,11 @@ async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_
     elif grammar.type == "build":
         if not grammar.sentence:
             raise HTTPException(status_code=400, detail="Build type requires sentence")
-    
+
     # Convert enum and options to database format
     grammar_type = GrammarType.FILL if grammar.type == "fill" else GrammarType.BUILD
     options_json = json.dumps(grammar.options) if grammar.options else None
-    
+
     db_grammar = Grammar(
         pack_id=grammar.pack_id,
         type=grammar_type,
@@ -237,14 +223,12 @@ async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_
         correct_option=grammar.correct_option,
         sentence=grammar.sentence
     )
-    
+
     db.add(db_grammar)
     await db.commit()
     await db.refresh(db_grammar)
-    
-    # Update cache
     await update_quiz_cache(db)
-    
+
     # Convert back to response format
     response_grammar = GrammarSchema(
         id=db_grammar.id,
@@ -257,49 +241,21 @@ async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_
         created_at=db_grammar.created_at,
         updated_at=db_grammar.updated_at
     )
-    
+
     return response_grammar
 
 
-@router.get("/grammars/{grammar_id}", response_model=GrammarSchema)
-async def get_grammar(grammar_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get a specific grammar question by ID"""
-    result = await db.execute(select(Grammar).where(Grammar.id == grammar_id))
-    grammar = result.scalar_one_or_none()
-    if not grammar:
-        raise HTTPException(status_code=404, detail="Grammar not found")
-    
-    # Convert options from JSON string
-    options = None
-    if grammar.options:
-        try:
-            options = json.loads(grammar.options)
-        except:
-            options = None
-    
-    return GrammarSchema(
-        id=grammar.id,
-        pack_id=grammar.pack_id,
-        type=grammar.type.value,
-        question_text=grammar.question_text,
-        options=options,
-        correct_option=grammar.correct_option,
-        sentence=grammar.sentence,
-        created_at=grammar.created_at,
-        updated_at=grammar.updated_at
-    )
-
-
 @router.put("/grammars/{grammar_id}", response_model=GrammarSchema)
-async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_user: User = Depends(get_admin_user),
+                         db: AsyncSession = Depends(get_db)):
     """Update a grammar question"""
     result = await db.execute(select(Grammar).where(Grammar.id == grammar_id))
     grammar = result.scalar_one_or_none()
     if not grammar:
         raise HTTPException(status_code=404, detail="Grammar not found")
-    
+
     update_data = grammar_update.dict(exclude_unset=True)
-    
+
     # Validate and convert data
     if "type" in update_data:
         grammar_type = update_data["type"]
@@ -308,7 +264,7 @@ async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_u
             question_text = update_data.get("question_text", grammar.question_text)
             options = update_data.get("options")
             correct_option = update_data.get("correct_option", grammar.correct_option)
-            
+
             if not question_text or not options or correct_option is None:
                 raise HTTPException(
                     status_code=400,
@@ -318,29 +274,27 @@ async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_u
                 raise HTTPException(status_code=400, detail="Options must contain exactly 4 items")
             if correct_option < 0 or correct_option > 3:
                 raise HTTPException(status_code=400, detail="correct_option must be between 0 and 3")
-        
+
         elif grammar_type == "build":
             sentence = update_data.get("sentence", grammar.sentence)
             if not sentence:
                 raise HTTPException(status_code=400, detail="Build type requires sentence")
-        
+
         # Convert string type to enum
         update_data["type"] = GrammarType.FILL if grammar_type == "fill" else GrammarType.BUILD
-    
+
     # Convert options to JSON string if provided
     if "options" in update_data and update_data["options"] is not None:
         update_data["options"] = json.dumps(update_data["options"])
-    
+
     # Apply updates
     for field, value in update_data.items():
         setattr(grammar, field, value)
-    
+
     await db.commit()
     await db.refresh(grammar)
-    
-    # Update cache
     await update_quiz_cache(db)
-    
+
     # Convert back to response format
     options = None
     if grammar.options:
@@ -348,7 +302,7 @@ async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_u
             options = json.loads(grammar.options)
         except:
             options = None
-    
+
     return GrammarSchema(
         id=grammar.id,
         pack_id=grammar.pack_id,
@@ -363,17 +317,15 @@ async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_u
 
 
 @router.delete("/grammars/{grammar_id}")
-async def delete_grammar(grammar_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+async def delete_grammar(grammar_id: int, admin_user: User = Depends(get_admin_user),
+                         db: AsyncSession = Depends(get_db)):
     """Delete a grammar question"""
     result = await db.execute(select(Grammar).where(Grammar.id == grammar_id))
     grammar = result.scalar_one_or_none()
     if not grammar:
         raise HTTPException(status_code=404, detail="Grammar not found")
-    
+
     await db.delete(grammar)
     await db.commit()
-    
-    # Update cache
     await update_quiz_cache(db)
-    
     return {"message": "Grammar deleted successfully"}

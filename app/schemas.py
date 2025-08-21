@@ -236,8 +236,11 @@ class GrammarTopic(GrammarTopicBase):
 
 class GrammarTopicSimple(BaseModel):
     id: int
+    pack_id: int
     video_url: Optional[str] = None
     markdown_text: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

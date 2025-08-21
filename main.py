@@ -22,8 +22,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Educational Platform API",
-    description="Backend API for educational platform with Telegram authentication",
-    version="1.0.0",
+    description="Simplified Backend API for educational platform with Telegram authentication",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -35,6 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Simplified API Routes
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 app.include_router(education.router, prefix="/api/education", tags=["education"])
@@ -49,7 +50,7 @@ app.include_router(subscription.router, prefix="/api/subscription", tags=["subsc
 
 @app.get("/")
 async def root():
-    return {"message": "Educational Platform API is running!"}
+    return {"message": "Educational Platform API v2.0 - Simplified & Optimized!"}
 
 
 if __name__ == "__main__":
