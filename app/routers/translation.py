@@ -6,8 +6,9 @@ import os
 from dotenv import load_dotenv
 
 from app.database import get_db
-from app.models import Translation
+from app.models import Translation, User
 from app.schemas import TranslationRequest, TranslationResponse
+from app.dependencies import get_current_user, get_admin_user
 
 load_dotenv()
 
@@ -66,6 +67,7 @@ Rules:
 @router.post("/translate", response_model=TranslationResponse)
 async def translate_text(
     request: TranslationRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Translate text with database caching"""
@@ -131,3 +133,52 @@ async def translate_text(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Translation service error: {str(e)}"
         )
+
+
+@router.get("/admin/translations")
+async def get_all_translations(
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    """Get all translations (admin only)"""
+    result = await db.execute(
+        select(Translation).offset(skip).limit(limit)
+    )
+    translations = result.scalars().all()
+    return translations
+
+
+@router.delete("/admin/translations/{translation_id}")
+async def delete_translation(
+    translation_id: int,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a translation by ID (admin only)"""
+    result = await db.execute(
+        select(Translation).where(Translation.id == translation_id)
+    )
+    translation = result.scalar_one_or_none()
+    
+    if not translation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Translation not found"
+        )
+    
+    await db.delete(translation)
+    await db.commit()
+    return {"message": "Translation deleted successfully"}
+
+
+@router.delete("/admin/translations")
+async def clear_all_translations(
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Clear all translations from cache (admin only)"""
+    await db.execute("DELETE FROM translations")
+    await db.commit()
+    return {"message": "All translations cleared successfully"}
