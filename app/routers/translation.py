@@ -179,6 +179,7 @@ async def clear_all_translations(
     db: AsyncSession = Depends(get_db)
 ):
     """Clear all translations from cache (admin only)"""
-    await db.execute("DELETE FROM translations")
+    from sqlalchemy import text
+    await db.execute(text("DELETE FROM translations"))
     await db.commit()
     return {"message": "All translations cleared successfully"}
