@@ -47,7 +47,7 @@ async def get_admin_user(
     user = await get_current_user(credentials, db)
     
     admin_phone = os.getenv("ADMIN_PHONE")
-    if not admin_phone or user.phone != admin_phone:
+    if not admin_phone or user.phone_number != admin_phone:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"

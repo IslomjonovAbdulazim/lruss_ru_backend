@@ -4,13 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List
 from app.database import get_db
-from app.models import Module, Lesson, Pack, PackType
+from app.models import Module, Lesson, Pack, PackType, User
 from app.schemas import (
     Module as ModuleSchema, ModuleCreate, ModuleUpdate,
     Lesson as LessonSchema, LessonCreate, LessonUpdate,
     Pack as PackSchema, PackCreate, PackUpdate,
     LessonsResponse
 )
+from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import get_lessons_cache, set_lessons_cache, invalidate_lessons_cache
 
 router = APIRouter()
@@ -75,7 +76,7 @@ async def update_cache(db: AsyncSession):
 
 
 @router.get("/lessons", response_model=LessonsResponse)
-async def get_lessons(db: AsyncSession = Depends(get_db)):
+async def get_lessons(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all lessons data from cache, fallback to database if not cached"""
     # Try to get from cache first
     cached_data = await get_lessons_cache()
@@ -88,7 +89,7 @@ async def get_lessons(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/modules", response_model=ModuleSchema, status_code=status.HTTP_201_CREATED)
-async def create_module(module: ModuleCreate, db: AsyncSession = Depends(get_db)):
+async def create_module(module: ModuleCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new module"""
     db_module = Module(**module.dict())
     db.add(db_module)
@@ -102,7 +103,7 @@ async def create_module(module: ModuleCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/modules", response_model=List[ModuleSchema])
-async def get_modules(db: AsyncSession = Depends(get_db)):
+async def get_modules(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all modules"""
     result = await db.execute(
         select(Module)
@@ -114,7 +115,7 @@ async def get_modules(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/modules/{module_id}", response_model=ModuleSchema)
-async def get_module(module_id: int, db: AsyncSession = Depends(get_db)):
+async def get_module(module_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific module by ID"""
     result = await db.execute(
         select(Module)
@@ -128,7 +129,7 @@ async def get_module(module_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/modules/{module_id}", response_model=ModuleSchema)
-async def update_module(module_id: int, module_update: ModuleUpdate, db: AsyncSession = Depends(get_db)):
+async def update_module(module_id: int, module_update: ModuleUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Update a module"""
     result = await db.execute(select(Module).where(Module.id == module_id))
     module = result.scalar_one_or_none()
@@ -148,7 +149,7 @@ async def update_module(module_id: int, module_update: ModuleUpdate, db: AsyncSe
 
 
 @router.delete("/modules/{module_id}")
-async def delete_module(module_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_module(module_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Delete a module"""
     result = await db.execute(select(Module).where(Module.id == module_id))
     module = result.scalar_one_or_none()
@@ -165,7 +166,7 @@ async def delete_module(module_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/lessons", response_model=LessonSchema, status_code=status.HTTP_201_CREATED)
-async def create_lesson(lesson: LessonCreate, db: AsyncSession = Depends(get_db)):
+async def create_lesson(lesson: LessonCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new lesson"""
     # Check if module exists
     result = await db.execute(select(Module).where(Module.id == lesson.module_id))
@@ -184,7 +185,7 @@ async def create_lesson(lesson: LessonCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/lessons/{lesson_id}", response_model=LessonSchema)
-async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
+async def get_lesson(lesson_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific lesson by ID"""
     result = await db.execute(
         select(Lesson)
@@ -198,7 +199,7 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/lessons/{lesson_id}", response_model=LessonSchema)
-async def update_lesson(lesson_id: int, lesson_update: LessonUpdate, db: AsyncSession = Depends(get_db)):
+async def update_lesson(lesson_id: int, lesson_update: LessonUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Update a lesson"""
     result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
     lesson = result.scalar_one_or_none()
@@ -218,7 +219,7 @@ async def update_lesson(lesson_id: int, lesson_update: LessonUpdate, db: AsyncSe
 
 
 @router.delete("/lessons/{lesson_id}")
-async def delete_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_lesson(lesson_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Delete a lesson"""
     result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
     lesson = result.scalar_one_or_none()
@@ -235,7 +236,7 @@ async def delete_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/packs", response_model=PackSchema, status_code=status.HTTP_201_CREATED)
-async def create_pack(pack: PackCreate, db: AsyncSession = Depends(get_db)):
+async def create_pack(pack: PackCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new pack"""
     # Check if lesson exists
     result = await db.execute(select(Lesson).where(Lesson.id == pack.lesson_id))
@@ -262,7 +263,7 @@ async def create_pack(pack: PackCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/packs/{pack_id}", response_model=PackSchema)
-async def get_pack(pack_id: int, db: AsyncSession = Depends(get_db)):
+async def get_pack(pack_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific pack by ID"""
     result = await db.execute(select(Pack).where(Pack.id == pack_id))
     pack = result.scalar_one_or_none()
@@ -272,7 +273,7 @@ async def get_pack(pack_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/packs/{pack_id}", response_model=PackSchema)
-async def update_pack(pack_id: int, pack_update: PackUpdate, db: AsyncSession = Depends(get_db)):
+async def update_pack(pack_id: int, pack_update: PackUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Update a pack"""
     result = await db.execute(select(Pack).where(Pack.id == pack_id))
     pack = result.scalar_one_or_none()
@@ -298,7 +299,7 @@ async def update_pack(pack_id: int, pack_update: PackUpdate, db: AsyncSession = 
 
 
 @router.delete("/packs/{pack_id}")
-async def delete_pack(pack_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_pack(pack_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Delete a pack"""
     result = await db.execute(select(Pack).where(Pack.id == pack_id))
     pack = result.scalar_one_or_none()

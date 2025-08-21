@@ -5,12 +5,13 @@ from sqlalchemy.orm import selectinload
 from typing import List, Dict, Any
 import json
 from app.database import get_db
-from app.models import Pack, Word, Grammar, PackType, GrammarType
+from app.models import Pack, Word, Grammar, PackType, GrammarType, User
 from app.schemas import (
     Word as WordSchema, WordCreate, WordUpdate,
     Grammar as GrammarSchema, GrammarCreate, GrammarUpdate,
     QuizResponse
 )
+from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import get_quiz_cache, set_quiz_cache, invalidate_quiz_cache
 
 router = APIRouter()
@@ -117,7 +118,7 @@ async def update_quiz_cache(db: AsyncSession):
 
 
 @router.get("/quiz", response_model=QuizResponse)
-async def get_quiz_data(db: AsyncSession = Depends(get_db)):
+async def get_quiz_data(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all quiz data from cache, fallback to database if not cached"""
     # Try to get from cache first
     cached_data = await get_quiz_cache()
@@ -130,7 +131,7 @@ async def get_quiz_data(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/words", response_model=WordSchema, status_code=status.HTTP_201_CREATED)
-async def create_word(word: WordCreate, db: AsyncSession = Depends(get_db)):
+async def create_word(word: WordCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new word"""
     # Check if pack exists and is a word pack
     pack_result = await db.execute(select(Pack).where(Pack.id == word.pack_id))
@@ -152,7 +153,7 @@ async def create_word(word: WordCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/words/{word_id}", response_model=WordSchema)
-async def get_word(word_id: int, db: AsyncSession = Depends(get_db)):
+async def get_word(word_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific word by ID"""
     result = await db.execute(select(Word).where(Word.id == word_id))
     word = result.scalar_one_or_none()
@@ -162,7 +163,7 @@ async def get_word(word_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/words/{word_id}", response_model=WordSchema)
-async def update_word(word_id: int, word_update: WordUpdate, db: AsyncSession = Depends(get_db)):
+async def update_word(word_id: int, word_update: WordUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Update a word"""
     result = await db.execute(select(Word).where(Word.id == word_id))
     word = result.scalar_one_or_none()
@@ -182,7 +183,7 @@ async def update_word(word_id: int, word_update: WordUpdate, db: AsyncSession = 
 
 
 @router.delete("/words/{word_id}")
-async def delete_word(word_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_word(word_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Delete a word"""
     result = await db.execute(select(Word).where(Word.id == word_id))
     word = result.scalar_one_or_none()
@@ -199,7 +200,7 @@ async def delete_word(word_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/grammars", response_model=GrammarSchema, status_code=status.HTTP_201_CREATED)
-async def create_grammar(grammar: GrammarCreate, db: AsyncSession = Depends(get_db)):
+async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new grammar question"""
     # Check if pack exists and is a grammar pack
     pack_result = await db.execute(select(Pack).where(Pack.id == grammar.pack_id))
@@ -261,7 +262,7 @@ async def create_grammar(grammar: GrammarCreate, db: AsyncSession = Depends(get_
 
 
 @router.get("/grammars/{grammar_id}", response_model=GrammarSchema)
-async def get_grammar(grammar_id: int, db: AsyncSession = Depends(get_db)):
+async def get_grammar(grammar_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific grammar question by ID"""
     result = await db.execute(select(Grammar).where(Grammar.id == grammar_id))
     grammar = result.scalar_one_or_none()
@@ -290,7 +291,7 @@ async def get_grammar(grammar_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/grammars/{grammar_id}", response_model=GrammarSchema)
-async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, db: AsyncSession = Depends(get_db)):
+async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Update a grammar question"""
     result = await db.execute(select(Grammar).where(Grammar.id == grammar_id))
     grammar = result.scalar_one_or_none()
@@ -362,7 +363,7 @@ async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, db: Asy
 
 
 @router.delete("/grammars/{grammar_id}")
-async def delete_grammar(grammar_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_grammar(grammar_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Delete a grammar question"""
     result = await db.execute(select(Grammar).where(Grammar.id == grammar_id))
     grammar = result.scalar_one_or_none()

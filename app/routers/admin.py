@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import User
 from app.schemas import UsersResponse
 from app.redis_client import get_users_cache, set_users_cache
+from app.dependencies import get_admin_user
 
 router = APIRouter()
 
@@ -44,7 +45,7 @@ async def update_users_cache(db: AsyncSession):
 
 
 @router.get("/users", response_model=UsersResponse)
-async def get_all_users(db: AsyncSession = Depends(get_db)):
+async def get_all_users(admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Get all users for admin panel from cache, fallback to database if not cached"""
     # Try to get from cache first
     cached_data = await get_users_cache()

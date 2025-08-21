@@ -4,13 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Dict, Any
 from app.database import get_db
-from app.models import Pack, GrammarTopic, PackType
+from app.models import Pack, GrammarTopic, PackType, User
 from app.schemas import (
     GrammarTopic as GrammarTopicSchema, 
     GrammarTopicCreate, 
     GrammarTopicUpdate,
     GrammarTopicsResponse
 )
+from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import (
     get_grammar_topics_cache, 
     set_grammar_topics_cache, 
@@ -50,7 +51,7 @@ async def update_grammar_topics_cache(db: AsyncSession):
 
 
 @router.get("/grammar-topics", response_model=GrammarTopicsResponse)
-async def get_grammar_topics(db: AsyncSession = Depends(get_db)):
+async def get_grammar_topics(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all grammar topics data from cache, fallback to database if not cached"""
     # Try to get from cache first
     cached_data = await get_grammar_topics_cache()
@@ -63,7 +64,7 @@ async def get_grammar_topics(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/grammar-topics", response_model=GrammarTopicSchema, status_code=status.HTTP_201_CREATED)
-async def create_grammar_topic(grammar_topic: GrammarTopicCreate, db: AsyncSession = Depends(get_db)):
+async def create_grammar_topic(grammar_topic: GrammarTopicCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new grammar topic"""
     # Check if pack exists and is a grammar pack
     pack_result = await db.execute(select(Pack).where(Pack.id == grammar_topic.pack_id))
@@ -85,7 +86,7 @@ async def create_grammar_topic(grammar_topic: GrammarTopicCreate, db: AsyncSessi
 
 
 @router.get("/grammar-topics/{topic_id}", response_model=GrammarTopicSchema)
-async def get_grammar_topic(topic_id: int, db: AsyncSession = Depends(get_db)):
+async def get_grammar_topic(topic_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific grammar topic by ID"""
     result = await db.execute(select(GrammarTopic).where(GrammarTopic.id == topic_id))
     topic = result.scalar_one_or_none()
@@ -95,7 +96,7 @@ async def get_grammar_topic(topic_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/grammar-topics/{topic_id}", response_model=GrammarTopicSchema)
-async def update_grammar_topic(topic_id: int, topic_update: GrammarTopicUpdate, db: AsyncSession = Depends(get_db)):
+async def update_grammar_topic(topic_id: int, topic_update: GrammarTopicUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Update a grammar topic"""
     result = await db.execute(select(GrammarTopic).where(GrammarTopic.id == topic_id))
     topic = result.scalar_one_or_none()
@@ -115,7 +116,7 @@ async def update_grammar_topic(topic_id: int, topic_update: GrammarTopicUpdate, 
 
 
 @router.delete("/grammar-topics/{topic_id}")
-async def delete_grammar_topic(topic_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_grammar_topic(topic_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Delete a grammar topic"""
     result = await db.execute(select(GrammarTopic).where(GrammarTopic.id == topic_id))
     topic = result.scalar_one_or_none()
@@ -132,7 +133,7 @@ async def delete_grammar_topic(topic_id: int, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/grammar-topics/by-pack/{pack_id}", response_model=List[GrammarTopicSchema])
-async def get_grammar_topics_by_pack(pack_id: int, db: AsyncSession = Depends(get_db)):
+async def get_grammar_topics_by_pack(pack_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all grammar topics for a specific pack"""
     # Check if pack exists and is a grammar pack
     pack_result = await db.execute(select(Pack).where(Pack.id == pack_id))
