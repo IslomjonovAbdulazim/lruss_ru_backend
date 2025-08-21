@@ -145,6 +145,56 @@ async def check_subscription(
             )
 
 
+@router.post("/admin/subscriptions", response_model=UserSubscriptionSchema, status_code=status.HTTP_201_CREATED)
+async def create_subscription(
+        subscription: UserSubscriptionCreate,
+        admin_user: User = Depends(get_admin_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Create a new subscription for a user (admin only)"""
+
+    # Validate user exists
+    user_result = await db.execute(select(User).where(User.id == subscription.user_id))
+    target_user = user_result.scalar_one_or_none()
+
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Validate dates
+    if subscription.start_date >= subscription.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End date must be after start date"
+        )
+
+    # Validate amount
+    if subscription.amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Amount must be greater than 0"
+        )
+
+    # Create subscription
+    db_subscription = UserSubscription(
+        user_id=subscription.user_id,
+        start_date=subscription.start_date,
+        end_date=subscription.end_date,
+        amount=subscription.amount,
+        currency=subscription.currency,
+        notes=subscription.notes,
+        created_by_admin_id=admin_user.id
+    )
+
+    db.add(db_subscription)
+    await db.commit()
+    await db.refresh(db_subscription)
+
+    return db_subscription
+
+
 @router.get("/admin/subscriptions", response_model=List[UserSubscriptionSchema])
 async def get_subscriptions(
         admin_user: User = Depends(get_admin_user),
@@ -177,6 +227,77 @@ async def get_subscriptions(
     subscriptions = result.scalars().all()
 
     return subscriptions
+
+
+@router.put("/admin/subscriptions/{subscription_id}", response_model=UserSubscriptionSchema)
+async def update_subscription(
+        subscription_id: int,
+        subscription_update: UserSubscriptionUpdate,
+        admin_user: User = Depends(get_admin_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Update a subscription (admin only)"""
+
+    result = await db.execute(select(UserSubscription).where(UserSubscription.id == subscription_id))
+    subscription = result.scalar_one_or_none()
+
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found"
+        )
+
+    update_data = subscription_update.dict(exclude_unset=True)
+
+    # Validate dates if being updated
+    start_date = update_data.get("start_date", subscription.start_date)
+    end_date = update_data.get("end_date", subscription.end_date)
+
+    if start_date >= end_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End date must be after start date"
+        )
+
+    # Validate amount if being updated
+    amount = update_data.get("amount", subscription.amount)
+    if amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Amount must be greater than 0"
+        )
+
+    # Apply updates
+    for field, value in update_data.items():
+        setattr(subscription, field, value)
+
+    await db.commit()
+    await db.refresh(subscription)
+
+    return subscription
+
+
+@router.delete("/admin/subscriptions/{subscription_id}")
+async def delete_subscription(
+        subscription_id: int,
+        admin_user: User = Depends(get_admin_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Delete/deactivate a subscription (admin only)"""
+
+    result = await db.execute(select(UserSubscription).where(UserSubscription.id == subscription_id))
+    subscription = result.scalar_one_or_none()
+
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found"
+        )
+
+    subscription.is_active = False
+    await db.commit()
+
+    return {"message": "Subscription deleted successfully"}
 
 
 @router.get("/admin/financial", response_model=FinancialStats)
