@@ -89,6 +89,7 @@ class Pack(PackBase):
 class LessonBase(BaseModel):
     title: str
     description: Optional[str] = None
+    order: int = 0
 
 
 class LessonCreate(LessonBase):
@@ -98,6 +99,7 @@ class LessonCreate(LessonBase):
 class LessonUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    order: Optional[int] = None
 
 
 class Lesson(LessonBase):
@@ -113,6 +115,7 @@ class Lesson(LessonBase):
 
 class ModuleBase(BaseModel):
     title: str
+    order: int = 0
 
 
 class ModuleCreate(ModuleBase):
@@ -121,6 +124,7 @@ class ModuleCreate(ModuleBase):
 
 class ModuleUpdate(BaseModel):
     title: Optional[str] = None
+    order: Optional[int] = None
 
 
 class Module(ModuleBase):

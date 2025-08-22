@@ -33,6 +33,7 @@ class Module(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
+    order = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -46,6 +47,7 @@ class Lesson(Base):
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     module_id = Column(Integer, ForeignKey("modules.id"), nullable=False)
+    order = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
