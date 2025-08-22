@@ -33,6 +33,7 @@ async def get_modules_from_db(db: AsyncSession) -> List[dict]:
         module_dict = {
             "id": module.id,
             "title": module.title,
+            "order": module.order,
             "created_at": module.created_at,
             "updated_at": module.updated_at,
             "lessons": []
@@ -43,6 +44,7 @@ async def get_modules_from_db(db: AsyncSession) -> List[dict]:
                 "id": lesson.id,
                 "title": lesson.title,
                 "description": lesson.description,
+                "order": lesson.order,
                 "module_id": lesson.module_id,
                 "created_at": lesson.created_at,
                 "updated_at": lesson.updated_at,
