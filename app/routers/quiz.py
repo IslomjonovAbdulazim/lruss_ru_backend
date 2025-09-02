@@ -15,7 +15,11 @@ from app.schemas import (
     QuizResponse
 )
 from app.dependencies import get_current_user, get_admin_user
-from app.redis_client import get_quiz_cache, set_quiz_cache, invalidate_quiz_cache
+from app.redis_client import (
+    get_quiz_cache, set_quiz_cache, invalidate_quiz_cache,
+    get_words_cache_by_pack, set_words_cache_by_pack, invalidate_words_cache_by_pack,
+    get_grammars_cache_by_pack, set_grammars_cache_by_pack, invalidate_grammars_cache_by_pack
+)
 
 router = APIRouter()
 
@@ -120,31 +124,44 @@ async def update_quiz_cache(db: AsyncSession):
     return quiz_data
 
 
-# SINGLE GET ENDPOINT FOR ALL QUIZ DATA
-@router.get("/all", response_model=QuizResponse)
-async def get_all_quiz_data(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get all quiz data: words and grammars with pack names from cache"""
-    # Try to get from cache first
-    cached_data = await get_quiz_cache()
-    if cached_data:
-        return cached_data
-
-    # If not in cache, get from database and cache it
-    quiz_data = await update_quiz_cache(db)
-    return quiz_data
 
 
 # WORD CRUD
 @router.get("/words", response_model=List[WordSchema])
 async def get_words(pack_id: Optional[int] = Query(None), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all words, optionally filtered by pack_id"""
+    # If pack_id specified, try cache first
+    if pack_id:
+        cached_data = await get_words_cache_by_pack(pack_id)
+        if cached_data:
+            return cached_data
+    
     query = select(Word).order_by(Word.id)
     if pack_id:
         query = query.where(Word.pack_id == pack_id)
     
     result = await db.execute(query)
     words = result.scalars().all()
-    return words
+    
+    # Convert to dict for caching
+    words_data = [
+        {
+            "id": word.id,
+            "pack_id": word.pack_id,
+            "audio_url": word.audio_url,
+            "ru_text": word.ru_text,
+            "uz_text": word.uz_text,
+            "created_at": word.created_at,
+            "updated_at": word.updated_at
+        }
+        for word in words
+    ]
+    
+    # Cache if filtered by pack_id
+    if pack_id:
+        await set_words_cache_by_pack(pack_id, words_data)
+    
+    return words_data
 
 
 @router.get("/words/{word_id}", response_model=WordSchema)

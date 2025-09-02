@@ -13,6 +13,10 @@ from app.schemas import (
     BusinessProfileUpdate
 )
 from app.dependencies import get_admin_user, get_current_user
+from app.redis_client import (
+    get_user_subscription_cache, set_user_subscription_cache, invalidate_user_subscription_cache,
+    get_subscriptions_list_cache, set_subscriptions_list_cache, invalidate_subscriptions_list_cache
+)
 
 router = APIRouter()
 
@@ -78,10 +82,16 @@ async def check_subscription(
         db: AsyncSession = Depends(get_db)
 ):
     """
-    Check user's premium subscription status with app version logic
+    Check user's premium subscription status with app version logic (cached for 5 minutes)
     - If app version >= required version: Return mock 24h premium
     - If app version < required version: Check real subscription
     """
+    
+    # Try cache first
+    cache_key = f"{current_user.id}:{app_version}"
+    cached_data = await get_user_subscription_cache(current_user.id)
+    if cached_data and cached_data.get("app_version") == app_version:
+        return SubscriptionStatus(**cached_data["result"])
 
     # Get business profile to check required version
     profile = await get_business_profile(db)
@@ -95,7 +105,7 @@ async def check_subscription(
         now = datetime.utcnow()
         mock_end_date = now + timedelta(hours=24)
 
-        return SubscriptionStatus(
+        result = SubscriptionStatus(
             has_premium=True,
             subscription={
                 "start_date": now.isoformat(),
@@ -106,11 +116,19 @@ async def check_subscription(
             },
             message="Premium access granted for updated app version"
         )
+        
+        # Cache the result
+        await set_user_subscription_cache(current_user.id, {
+            "app_version": app_version,
+            "result": result.dict()
+        })
+        
+        return result
 
     else:
         # User has older version -> check real subscription
         now = datetime.utcnow()
-        result = await db.execute(
+        db_result = await db.execute(
             select(UserSubscription)
             .where(
                 and_(
@@ -121,11 +139,11 @@ async def check_subscription(
             )
             .order_by(UserSubscription.end_date.desc())
         )
-        active_sub = result.scalar_one_or_none()
+        active_sub = db_result.scalar_one_or_none()
 
         if active_sub:
             days_remaining = (active_sub.end_date - now).days
-            return SubscriptionStatus(
+            result = SubscriptionStatus(
                 has_premium=True,
                 subscription={
                     "start_date": active_sub.start_date.isoformat(),
@@ -138,11 +156,19 @@ async def check_subscription(
                 message="Active premium subscription"
             )
         else:
-            return SubscriptionStatus(
+            result = SubscriptionStatus(
                 has_premium=False,
                 subscription=None,
                 message="No active premium subscription"
             )
+            
+        # Cache the result
+        await set_user_subscription_cache(current_user.id, {
+            "app_version": app_version,
+            "result": result.dict()
+        })
+        
+        return result
 
 
 @router.post("/admin/payment", response_model=UserSubscriptionSchema, status_code=status.HTTP_201_CREATED)
@@ -191,6 +217,10 @@ async def create_subscription(
     db.add(db_subscription)
     await db.commit()
     await db.refresh(db_subscription)
+    
+    # Invalidate caches
+    await invalidate_user_subscription_cache(subscription.user_id)
+    await invalidate_subscriptions_list_cache()
 
     return db_subscription
 
@@ -204,7 +234,14 @@ async def get_subscriptions(
         user_id: Optional[int] = Query(None),
         active_only: bool = Query(False)
 ):
-    """Get all subscriptions with optional filters (admin only)"""
+    """Get all subscriptions with optional filters (admin only, cached for 10 minutes)"""
+    
+    # Only cache if no filters applied (default query)
+    cache_key = f"skip:{skip}:limit:{limit}:user:{user_id}:active:{active_only}"
+    if not user_id and not active_only and skip == 0 and limit == 50:
+        cached_data = await get_subscriptions_list_cache()
+        if cached_data:
+            return cached_data
 
     query = select(UserSubscription).order_by(UserSubscription.created_at.desc())
 
@@ -226,7 +263,29 @@ async def get_subscriptions(
     result = await db.execute(query)
     subscriptions = result.scalars().all()
 
-    return subscriptions
+    # Convert to dict for caching
+    subscriptions_data = [
+        {
+            "id": sub.id,
+            "user_id": sub.user_id,
+            "start_date": sub.start_date,
+            "end_date": sub.end_date,
+            "amount": sub.amount,
+            "currency": sub.currency,
+            "is_active": sub.is_active,
+            "created_by_admin_id": sub.created_by_admin_id,
+            "notes": sub.notes,
+            "created_at": sub.created_at,
+            "updated_at": sub.updated_at
+        }
+        for sub in subscriptions
+    ]
+
+    # Cache only default query
+    if not user_id and not active_only and skip == 0 and limit == 50:
+        await set_subscriptions_list_cache(subscriptions_data)
+
+    return subscriptions_data
 
 
 @router.put("/admin/payment/{subscription_id}", response_model=UserSubscriptionSchema)
@@ -273,6 +332,10 @@ async def update_subscription(
 
     await db.commit()
     await db.refresh(subscription)
+    
+    # Invalidate caches
+    await invalidate_user_subscription_cache(subscription.user_id)
+    await invalidate_subscriptions_list_cache()
 
     return subscription
 
@@ -296,6 +359,10 @@ async def delete_subscription(
 
     subscription.is_active = False
     await db.commit()
+    
+    # Invalidate caches
+    await invalidate_user_subscription_cache(subscription.user_id)
+    await invalidate_subscriptions_list_cache()
 
     return {"message": "Subscription deleted successfully"}
 

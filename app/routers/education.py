@@ -12,7 +12,12 @@ from app.schemas import (
     LessonsResponse
 )
 from app.dependencies import get_current_user, get_admin_user
-from app.redis_client import get_lessons_cache, set_lessons_cache, invalidate_lessons_cache
+from app.redis_client import (
+    get_lessons_cache, set_lessons_cache, invalidate_lessons_cache,
+    get_modules_cache, set_modules_cache, invalidate_modules_cache,
+    get_lessons_cache_by_module, set_lessons_cache_by_module, invalidate_lessons_cache_by_module,
+    get_packs_cache_by_lesson, set_packs_cache_by_lesson, invalidate_packs_cache_by_lesson
+)
 
 router = APIRouter()
 
@@ -77,27 +82,34 @@ async def update_cache(db: AsyncSession):
     return modules_data
 
 
-# SINGLE GET ENDPOINT FOR ALL EDUCATION DATA
-@router.get("/all", response_model=LessonsResponse)
-async def get_all_education_data(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get all education data: modules -> lessons -> packs from cache"""
-    # Try to get from cache first
-    cached_data = await get_lessons_cache()
-    if cached_data:
-        return {"modules": cached_data}
-
-    # If not in cache, get from database and cache it
-    modules_data = await update_cache(db)
-    return {"modules": modules_data}
-
 
 # MODULE CRUD
 @router.get("/modules", response_model=List[ModuleSchema])
 async def get_modules(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get all modules"""
+    """Get all modules from cache"""
+    # Try cache first
+    cached_data = await get_modules_cache()
+    if cached_data:
+        return cached_data
+    
+    # Get from database and cache
     result = await db.execute(select(Module).order_by(Module.order))
     modules = result.scalars().all()
-    return modules
+    
+    # Convert to dict for caching
+    modules_data = [
+        {
+            "id": module.id,
+            "title": module.title,
+            "order": module.order,
+            "created_at": module.created_at,
+            "updated_at": module.updated_at
+        }
+        for module in modules
+    ]
+    
+    await set_modules_cache(modules_data)
+    return modules_data
 
 
 @router.get("/modules/{module_id}", response_model=ModuleSchema)
@@ -118,6 +130,7 @@ async def create_module(module: ModuleCreate, admin_user: User = Depends(get_adm
     db.add(db_module)
     await db.commit()
     await db.refresh(db_module)
+    await invalidate_modules_cache()
     await update_cache(db)
     return db_module
 
@@ -136,6 +149,7 @@ async def update_module(module_id: int, module_update: ModuleUpdate, admin_user:
 
     await db.commit()
     await db.refresh(module)
+    await invalidate_modules_cache()
     await update_cache(db)
     return module
 
@@ -150,6 +164,7 @@ async def delete_module(module_id: int, admin_user: User = Depends(get_admin_use
 
     await db.delete(module)
     await db.commit()
+    await invalidate_modules_cache()
     await update_cache(db)
     return {"message": "Module deleted successfully"}
 
@@ -158,13 +173,38 @@ async def delete_module(module_id: int, admin_user: User = Depends(get_admin_use
 @router.get("/lessons", response_model=List[LessonSchema])
 async def get_lessons_by_module(module_id: Optional[int] = Query(None), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all lessons, optionally filtered by module_id"""
+    # If module_id specified, try cache first
+    if module_id:
+        cached_data = await get_lessons_cache_by_module(module_id)
+        if cached_data:
+            return cached_data
+    
     query = select(Lesson).order_by(Lesson.order)
     if module_id:
         query = query.where(Lesson.module_id == module_id)
     
     result = await db.execute(query)
     lessons = result.scalars().all()
-    return lessons
+    
+    # Convert to dict for caching
+    lessons_data = [
+        {
+            "id": lesson.id,
+            "title": lesson.title,
+            "description": lesson.description,
+            "module_id": lesson.module_id,
+            "order": lesson.order,
+            "created_at": lesson.created_at,
+            "updated_at": lesson.updated_at
+        }
+        for lesson in lessons
+    ]
+    
+    # Cache if filtered by module_id
+    if module_id:
+        await set_lessons_cache_by_module(module_id, lessons_data)
+    
+    return lessons_data
 
 
 @router.get("/lessons/{lesson_id}", response_model=LessonSchema)
@@ -190,6 +230,8 @@ async def create_lesson(lesson: LessonCreate, admin_user: User = Depends(get_adm
     db.add(db_lesson)
     await db.commit()
     await db.refresh(db_lesson)
+    await invalidate_lessons_cache_by_module(lesson.module_id)
+    await invalidate_modules_cache()
     await update_cache(db)
     return db_lesson
 
@@ -208,6 +250,8 @@ async def update_lesson(lesson_id: int, lesson_update: LessonUpdate, admin_user:
 
     await db.commit()
     await db.refresh(lesson)
+    await invalidate_lessons_cache_by_module(lesson.module_id)
+    await invalidate_modules_cache()
     await update_cache(db)
     return lesson
 
@@ -222,6 +266,8 @@ async def delete_lesson(lesson_id: int, admin_user: User = Depends(get_admin_use
 
     await db.delete(lesson)
     await db.commit()
+    await invalidate_lessons_cache_by_module(lesson.module_id)
+    await invalidate_modules_cache()
     await update_cache(db)
     return {"message": "Lesson deleted successfully"}
 
@@ -230,13 +276,38 @@ async def delete_lesson(lesson_id: int, admin_user: User = Depends(get_admin_use
 @router.get("/packs", response_model=List[PackSchema])
 async def get_packs(lesson_id: Optional[int] = Query(None), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all packs, optionally filtered by lesson_id"""
+    # If lesson_id specified, try cache first
+    if lesson_id:
+        cached_data = await get_packs_cache_by_lesson(lesson_id)
+        if cached_data:
+            return cached_data
+    
     query = select(Pack).order_by(Pack.id)
     if lesson_id:
         query = query.where(Pack.lesson_id == lesson_id)
     
     result = await db.execute(query)
     packs = result.scalars().all()
-    return packs
+    
+    # Convert to dict for caching
+    packs_data = [
+        {
+            "id": pack.id,
+            "title": pack.title,
+            "lesson_id": pack.lesson_id,
+            "type": pack.type.value,
+            "word_count": pack.word_count,
+            "created_at": pack.created_at,
+            "updated_at": pack.updated_at
+        }
+        for pack in packs
+    ]
+    
+    # Cache if filtered by lesson_id
+    if lesson_id:
+        await set_packs_cache_by_lesson(lesson_id, packs_data)
+    
+    return packs_data
 
 
 @router.get("/packs/{pack_id}", response_model=PackSchema)
@@ -269,6 +340,13 @@ async def create_pack(pack: PackCreate, admin_user: User = Depends(get_admin_use
     db.add(db_pack)
     await db.commit()
     await db.refresh(db_pack)
+    
+    # Get lesson to invalidate its module cache
+    lesson_result = await db.execute(select(Lesson).where(Lesson.id == pack.lesson_id))
+    lesson = lesson_result.scalar_one()
+    
+    await invalidate_packs_cache_by_lesson(pack.lesson_id)
+    await invalidate_lessons_cache_by_module(lesson.module_id)
     await update_cache(db)
     return db_pack
 
@@ -293,6 +371,13 @@ async def update_pack(pack_id: int, pack_update: PackUpdate, admin_user: User = 
 
     await db.commit()
     await db.refresh(pack)
+    
+    # Get lesson to invalidate its module cache
+    lesson_result = await db.execute(select(Lesson).where(Lesson.id == pack.lesson_id))
+    lesson = lesson_result.scalar_one()
+    
+    await invalidate_packs_cache_by_lesson(pack.lesson_id)
+    await invalidate_lessons_cache_by_module(lesson.module_id)
     await update_cache(db)
     return pack
 
@@ -305,7 +390,14 @@ async def delete_pack(pack_id: int, admin_user: User = Depends(get_admin_user), 
     if not pack:
         raise HTTPException(status_code=404, detail="Pack not found")
 
+    # Get lesson info before deleting pack
+    lesson_result = await db.execute(select(Lesson).where(Lesson.id == pack.lesson_id))
+    lesson = lesson_result.scalar_one()
+    
     await db.delete(pack)
     await db.commit()
+    
+    await invalidate_packs_cache_by_lesson(pack.lesson_id)
+    await invalidate_lessons_cache_by_module(lesson.module_id)
     await update_cache(db)
     return {"message": "Pack deleted successfully"}

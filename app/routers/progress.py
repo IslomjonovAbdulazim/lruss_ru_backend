@@ -11,6 +11,7 @@ from app.schemas import (
     PackProgress
 )
 from app.dependencies import get_current_user
+from app.redis_client import invalidate_leaderboard_cache
 
 router = APIRouter()
 
@@ -55,6 +56,9 @@ async def submit_progress(
             await db.commit()
             await db.refresh(existing_progress)
             
+            # Invalidate leaderboard cache since user points changed
+            await invalidate_leaderboard_cache()
+            
             return ProgressResponse(
                 points_earned=points_earned,
                 total_points=existing_progress.total_points,
@@ -82,6 +86,9 @@ async def submit_progress(
         db.add(new_progress)
         await db.commit()
         await db.refresh(new_progress)
+        
+        # Invalidate leaderboard cache since new user points added
+        await invalidate_leaderboard_cache()
         
         return ProgressResponse(
             points_earned=points_earned,
