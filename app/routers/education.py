@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app.models import Module, Lesson, Pack, PackType, User
 from app.schemas import (
@@ -78,8 +78,8 @@ async def update_cache(db: AsyncSession):
 
 
 # SINGLE GET ENDPOINT FOR ALL EDUCATION DATA
-@router.get("/lessons", response_model=LessonsResponse)
-async def get_lessons(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@router.get("/all", response_model=LessonsResponse)
+async def get_all_education_data(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get all education data: modules -> lessons -> packs from cache"""
     # Try to get from cache first
     cached_data = await get_lessons_cache()
@@ -92,6 +92,24 @@ async def get_lessons(current_user: User = Depends(get_current_user), db: AsyncS
 
 
 # MODULE CRUD
+@router.get("/modules", response_model=List[ModuleSchema])
+async def get_modules(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get all modules"""
+    result = await db.execute(select(Module).order_by(Module.order))
+    modules = result.scalars().all()
+    return modules
+
+
+@router.get("/modules/{module_id}", response_model=ModuleSchema)
+async def get_module(module_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get a specific module"""
+    result = await db.execute(select(Module).where(Module.id == module_id))
+    module = result.scalar_one_or_none()
+    if not module:
+        raise HTTPException(status_code=404, detail="Module not found")
+    return module
+
+
 @router.post("/modules", response_model=ModuleSchema, status_code=status.HTTP_201_CREATED)
 async def create_module(module: ModuleCreate, admin_user: User = Depends(get_admin_user),
                         db: AsyncSession = Depends(get_db)):
@@ -137,6 +155,28 @@ async def delete_module(module_id: int, admin_user: User = Depends(get_admin_use
 
 
 # LESSON CRUD
+@router.get("/lessons", response_model=List[LessonSchema])
+async def get_lessons_by_module(module_id: Optional[int] = Query(None), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get all lessons, optionally filtered by module_id"""
+    query = select(Lesson).order_by(Lesson.order)
+    if module_id:
+        query = query.where(Lesson.module_id == module_id)
+    
+    result = await db.execute(query)
+    lessons = result.scalars().all()
+    return lessons
+
+
+@router.get("/lessons/{lesson_id}", response_model=LessonSchema)
+async def get_lesson(lesson_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get a specific lesson"""
+    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    lesson = result.scalar_one_or_none()
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    return lesson
+
+
 @router.post("/lessons", response_model=LessonSchema, status_code=status.HTTP_201_CREATED)
 async def create_lesson(lesson: LessonCreate, admin_user: User = Depends(get_admin_user),
                         db: AsyncSession = Depends(get_db)):
@@ -187,6 +227,28 @@ async def delete_lesson(lesson_id: int, admin_user: User = Depends(get_admin_use
 
 
 # PACK CRUD
+@router.get("/packs", response_model=List[PackSchema])
+async def get_packs(lesson_id: Optional[int] = Query(None), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get all packs, optionally filtered by lesson_id"""
+    query = select(Pack).order_by(Pack.id)
+    if lesson_id:
+        query = query.where(Pack.lesson_id == lesson_id)
+    
+    result = await db.execute(query)
+    packs = result.scalars().all()
+    return packs
+
+
+@router.get("/packs/{pack_id}", response_model=PackSchema)
+async def get_pack(pack_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get a specific pack"""
+    result = await db.execute(select(Pack).where(Pack.id == pack_id))
+    pack = result.scalar_one_or_none()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Pack not found")
+    return pack
+
+
 @router.post("/packs", response_model=PackSchema, status_code=status.HTTP_201_CREATED)
 async def create_pack(pack: PackCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Create a new pack"""

@@ -12,12 +12,36 @@ from app.routers.leaderboard import start_leaderboard_scheduler, stop_leaderboar
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
-    await start_bot()
-    start_leaderboard_scheduler()
+    try:
+        await init_db()
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        print("⚠️  Server will start without database connection")
+    
+    try:
+        await start_bot()
+        print("✅ Telegram bot started successfully")
+    except Exception as e:
+        print(f"❌ Telegram bot failed to start: {e}")
+    
+    try:
+        start_leaderboard_scheduler()
+        print("✅ Leaderboard scheduler started")
+    except Exception as e:
+        print(f"❌ Leaderboard scheduler failed: {e}")
+    
     yield
-    stop_leaderboard_scheduler()
-    await close_redis()
+    
+    try:
+        stop_leaderboard_scheduler()
+    except Exception as e:
+        print(f"❌ Error stopping leaderboard scheduler: {e}")
+    
+    try:
+        await close_redis()
+    except Exception as e:
+        print(f"❌ Error closing Redis: {e}")
 
 
 app = FastAPI(

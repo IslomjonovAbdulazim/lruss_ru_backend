@@ -145,7 +145,7 @@ async def check_subscription(
             )
 
 
-@router.post("/admin/subscriptions", response_model=UserSubscriptionSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/admin/payment", response_model=UserSubscriptionSchema, status_code=status.HTTP_201_CREATED)
 async def create_subscription(
         subscription: UserSubscriptionCreate,
         admin_user: User = Depends(get_admin_user),
@@ -195,7 +195,7 @@ async def create_subscription(
     return db_subscription
 
 
-@router.get("/admin/subscriptions", response_model=List[UserSubscriptionSchema])
+@router.get("/admin/payment", response_model=List[UserSubscriptionSchema])
 async def get_subscriptions(
         admin_user: User = Depends(get_admin_user),
         db: AsyncSession = Depends(get_db),
@@ -229,7 +229,7 @@ async def get_subscriptions(
     return subscriptions
 
 
-@router.put("/admin/subscriptions/{subscription_id}", response_model=UserSubscriptionSchema)
+@router.put("/admin/payment/{subscription_id}", response_model=UserSubscriptionSchema)
 async def update_subscription(
         subscription_id: int,
         subscription_update: UserSubscriptionUpdate,
@@ -277,7 +277,7 @@ async def update_subscription(
     return subscription
 
 
-@router.delete("/admin/subscriptions/{subscription_id}")
+@router.delete("/admin/payment/{subscription_id}")
 async def delete_subscription(
         subscription_id: int,
         admin_user: User = Depends(get_admin_user),
@@ -300,7 +300,7 @@ async def delete_subscription(
     return {"message": "Subscription deleted successfully"}
 
 
-@router.get("/admin/financial", response_model=FinancialStats)
+@router.get("/admin/payment/stats", response_model=FinancialStats)
 async def get_financial_stats(
         admin_user: User = Depends(get_admin_user),
         db: AsyncSession = Depends(get_db)
