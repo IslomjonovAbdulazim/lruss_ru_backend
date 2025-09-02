@@ -79,7 +79,14 @@ async def create_module(module: ModuleCreate, admin_user: User = Depends(get_adm
     await db.commit()
     await db.refresh(db_module)
     await invalidate_modules_cache()
-    return db_module
+    
+    # Reload with lessons for response
+    result = await db.execute(
+        select(Module)
+        .options(selectinload(Module.lessons))
+        .where(Module.id == db_module.id)
+    )
+    return result.scalar_one()
 
 
 @router.put("/modules/{module_id}", response_model=ModuleSchema)
@@ -97,7 +104,14 @@ async def update_module(module_id: int, module_update: ModuleUpdate, admin_user:
     await db.commit()
     await db.refresh(module)
     await invalidate_modules_cache()
-    return module
+    
+    # Reload with lessons for response
+    result = await db.execute(
+        select(Module)
+        .options(selectinload(Module.lessons))
+        .where(Module.id == module_id)
+    )
+    return result.scalar_one()
 
 
 @router.delete("/modules/{module_id}")
@@ -181,7 +195,14 @@ async def create_lesson(lesson: LessonCreate, admin_user: User = Depends(get_adm
     await db.refresh(db_lesson)
     await invalidate_lessons_cache_by_module(lesson.module_id)
     await invalidate_modules_cache()
-    return db_lesson
+    
+    # Reload with packs for response
+    result = await db.execute(
+        select(Lesson)
+        .options(selectinload(Lesson.packs))
+        .where(Lesson.id == db_lesson.id)
+    )
+    return result.scalar_one()
 
 
 @router.put("/lessons/{lesson_id}", response_model=LessonSchema)
@@ -200,7 +221,14 @@ async def update_lesson(lesson_id: int, lesson_update: LessonUpdate, admin_user:
     await db.refresh(lesson)
     await invalidate_lessons_cache_by_module(lesson.module_id)
     await invalidate_modules_cache()
-    return lesson
+    
+    # Reload with packs for response
+    result = await db.execute(
+        select(Lesson)
+        .options(selectinload(Lesson.packs))
+        .where(Lesson.id == lesson_id)
+    )
+    return result.scalar_one()
 
 
 @router.delete("/lessons/{lesson_id}")
