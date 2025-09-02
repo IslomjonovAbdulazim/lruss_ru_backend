@@ -31,6 +31,14 @@ async def send_code(request: SendCodeRequest, db: AsyncSession = Depends(get_db)
     if not phone_number.startswith('+'):
         phone_number = '+' + phone_number
     
+    # Check if this is admin phone - block with generic error
+    admin_phone = os.getenv("ADMIN_PHONE")
+    if admin_phone and phone_number == admin_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication service temporarily unavailable for this account"
+        )
+    
     user_result = await db.execute(
         select(User).where(User.phone_number == phone_number)
     )
@@ -62,6 +70,14 @@ async def login(auth_request: AuthRequest, db: AsyncSession = Depends(get_db)):
     phone_number = auth_request.phone_number
     if not phone_number.startswith('+'):
         phone_number = '+' + phone_number
+    
+    # Check if this is admin phone - block with generic error
+    admin_phone = os.getenv("ADMIN_PHONE")
+    if admin_phone and phone_number == admin_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication service temporarily unavailable for this account"
+        )
     
     cached_code = await get_otp_code(phone_number)
     

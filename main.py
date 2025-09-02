@@ -17,7 +17,8 @@ async def lifespan(app: FastAPI):
     # Create storage directories
     storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")
     os.makedirs(f"{storage_path}/user_photos", exist_ok=True)
-    print(f"✅ Storage directory created: {storage_path}")
+    os.makedirs(f"{storage_path}/word_audio", exist_ok=True)
+    print(f"✅ Storage directories created: {storage_path}")
     
     try:
         await init_db()
