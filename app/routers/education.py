@@ -59,7 +59,11 @@ async def get_modules(current_user: User = Depends(get_current_user), db: AsyncS
 @router.get("/modules/{module_id}", response_model=ModuleSchema)
 async def get_module(module_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific module"""
-    result = await db.execute(select(Module).where(Module.id == module_id))
+    result = await db.execute(
+        select(Module)
+        .options(selectinload(Module.lessons))
+        .where(Module.id == module_id)
+    )
     module = result.scalar_one_or_none()
     if not module:
         raise HTTPException(status_code=404, detail="Module not found")
@@ -151,7 +155,11 @@ async def get_lessons_by_module(module_id: Optional[int] = Query(None), current_
 @router.get("/lessons/{lesson_id}", response_model=LessonSchema)
 async def get_lesson(lesson_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get a specific lesson"""
-    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    result = await db.execute(
+        select(Lesson)
+        .options(selectinload(Lesson.packs))
+        .where(Lesson.id == lesson_id)
+    )
     lesson = result.scalar_one_or_none()
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
