@@ -75,11 +75,6 @@ async def get_modules_from_db(db: AsyncSession) -> List[dict]:
     return modules_data
 
 
-async def update_cache(db: AsyncSession):
-    """Update the lessons cache with fresh data from database"""
-    modules_data = await get_modules_from_db(db)
-    await set_lessons_cache(modules_data)
-    return modules_data
 
 
 
@@ -131,7 +126,6 @@ async def create_module(module: ModuleCreate, admin_user: User = Depends(get_adm
     await db.commit()
     await db.refresh(db_module)
     await invalidate_modules_cache()
-    await update_cache(db)
     return db_module
 
 
@@ -150,7 +144,6 @@ async def update_module(module_id: int, module_update: ModuleUpdate, admin_user:
     await db.commit()
     await db.refresh(module)
     await invalidate_modules_cache()
-    await update_cache(db)
     return module
 
 
@@ -165,7 +158,6 @@ async def delete_module(module_id: int, admin_user: User = Depends(get_admin_use
     await db.delete(module)
     await db.commit()
     await invalidate_modules_cache()
-    await update_cache(db)
     return {"message": "Module deleted successfully"}
 
 
@@ -232,7 +224,6 @@ async def create_lesson(lesson: LessonCreate, admin_user: User = Depends(get_adm
     await db.refresh(db_lesson)
     await invalidate_lessons_cache_by_module(lesson.module_id)
     await invalidate_modules_cache()
-    await update_cache(db)
     return db_lesson
 
 
@@ -252,7 +243,6 @@ async def update_lesson(lesson_id: int, lesson_update: LessonUpdate, admin_user:
     await db.refresh(lesson)
     await invalidate_lessons_cache_by_module(lesson.module_id)
     await invalidate_modules_cache()
-    await update_cache(db)
     return lesson
 
 
@@ -268,7 +258,6 @@ async def delete_lesson(lesson_id: int, admin_user: User = Depends(get_admin_use
     await db.commit()
     await invalidate_lessons_cache_by_module(lesson.module_id)
     await invalidate_modules_cache()
-    await update_cache(db)
     return {"message": "Lesson deleted successfully"}
 
 
@@ -347,7 +336,6 @@ async def create_pack(pack: PackCreate, admin_user: User = Depends(get_admin_use
     
     await invalidate_packs_cache_by_lesson(pack.lesson_id)
     await invalidate_lessons_cache_by_module(lesson.module_id)
-    await update_cache(db)
     return db_pack
 
 
@@ -378,7 +366,6 @@ async def update_pack(pack_id: int, pack_update: PackUpdate, admin_user: User = 
     
     await invalidate_packs_cache_by_lesson(pack.lesson_id)
     await invalidate_lessons_cache_by_module(lesson.module_id)
-    await update_cache(db)
     return pack
 
 
@@ -399,5 +386,4 @@ async def delete_pack(pack_id: int, admin_user: User = Depends(get_admin_user), 
     
     await invalidate_packs_cache_by_lesson(pack.lesson_id)
     await invalidate_lessons_cache_by_module(lesson.module_id)
-    await update_cache(db)
     return {"message": "Pack deleted successfully"}

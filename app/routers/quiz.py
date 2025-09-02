@@ -117,11 +117,6 @@ async def get_quiz_data_from_db(db: AsyncSession) -> Dict[str, Any]:
     }
 
 
-async def update_quiz_cache(db: AsyncSession):
-    """Update the quiz cache with fresh data from database"""
-    quiz_data = await get_quiz_data_from_db(db)
-    await set_quiz_cache(quiz_data)
-    return quiz_data
 
 
 
@@ -189,7 +184,7 @@ async def create_word(word: WordCreate, admin_user: User = Depends(get_admin_use
     db.add(db_word)
     await db.commit()
     await db.refresh(db_word)
-    await update_quiz_cache(db)
+    await invalidate_words_cache_by_pack(word.pack_id)
     return db_word
 
 
@@ -207,7 +202,7 @@ async def update_word(word_id: int, word_update: WordUpdate, admin_user: User = 
 
     await db.commit()
     await db.refresh(word)
-    await update_quiz_cache(db)
+    await invalidate_words_cache_by_pack(word.pack_id)
     return word
 
 
@@ -221,7 +216,7 @@ async def delete_word(word_id: int, admin_user: User = Depends(get_admin_user), 
 
     await db.delete(word)
     await db.commit()
-    await update_quiz_cache(db)
+    await invalidate_words_cache_by_pack(word.pack_id)
     return {"message": "Word deleted successfully"}
 
 
@@ -284,8 +279,8 @@ async def upload_word_audio(
     await db.commit()
     await db.refresh(word)
     
-    # Invalidate quiz cache
-    await update_quiz_cache(db)
+    # Invalidate words cache
+    await invalidate_words_cache_by_pack(word.pack_id)
     
     return word
 
@@ -398,7 +393,7 @@ async def create_grammar(grammar: GrammarCreate, admin_user: User = Depends(get_
     db.add(db_grammar)
     await db.commit()
     await db.refresh(db_grammar)
-    await update_quiz_cache(db)
+    await invalidate_grammars_cache_by_pack(grammar.pack_id)
 
     # Convert back to response format
     response_grammar = GrammarSchema(
@@ -464,7 +459,7 @@ async def update_grammar(grammar_id: int, grammar_update: GrammarUpdate, admin_u
 
     await db.commit()
     await db.refresh(grammar)
-    await update_quiz_cache(db)
+    await invalidate_grammars_cache_by_pack(grammar.pack_id)
 
     # Convert back to response format
     options = None
@@ -498,5 +493,5 @@ async def delete_grammar(grammar_id: int, admin_user: User = Depends(get_admin_u
 
     await db.delete(grammar)
     await db.commit()
-    await update_quiz_cache(db)
+    await invalidate_grammars_cache_by_pack(grammar.pack_id)
     return {"message": "Grammar deleted successfully"}
