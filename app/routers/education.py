@@ -22,57 +22,6 @@ from app.redis_client import (
 router = APIRouter()
 
 
-async def get_modules_from_db(db: AsyncSession) -> List[dict]:
-    """Get all modules with lessons and packs from database"""
-    result = await db.execute(
-        select(Module)
-        .options(
-            selectinload(Module.lessons).selectinload(Lesson.packs)
-        )
-        .order_by(Module.id)
-    )
-    modules = result.scalars().all()
-
-    modules_data = []
-    for module in modules:
-        module_dict = {
-            "id": module.id,
-            "title": module.title,
-            "order": module.order,
-            "created_at": module.created_at,
-            "updated_at": module.updated_at,
-            "lessons": []
-        }
-
-        for lesson in module.lessons:
-            lesson_dict = {
-                "id": lesson.id,
-                "title": lesson.title,
-                "description": lesson.description,
-                "order": lesson.order,
-                "module_id": lesson.module_id,
-                "created_at": lesson.created_at,
-                "updated_at": lesson.updated_at,
-                "packs": []
-            }
-
-            for pack in lesson.packs:
-                pack_dict = {
-                    "id": pack.id,
-                    "title": pack.title,
-                    "lesson_id": pack.lesson_id,
-                    "type": pack.type.value,
-                    "word_count": pack.word_count,
-                    "created_at": pack.created_at,
-                    "updated_at": pack.updated_at
-                }
-                lesson_dict["packs"].append(pack_dict)
-
-            module_dict["lessons"].append(lesson_dict)
-
-        modules_data.append(module_dict)
-
-    return modules_data
 
 
 
