@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import uvicorn
+import os
 
 from app.database import init_db
 from app.routers import auth, profile, education, quiz, grammar_topics, admin, progress, leaderboard, translation, subscription
@@ -12,6 +14,11 @@ from app.routers.leaderboard import start_leaderboard_scheduler, stop_leaderboar
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Create storage directories
+    storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")
+    os.makedirs(f"{storage_path}/user_photos", exist_ok=True)
+    print(f"✅ Storage directory created: {storage_path}")
+    
     try:
         await init_db()
         print("✅ Database initialized successfully")
@@ -70,6 +77,10 @@ app.include_router(progress.router, prefix="/api/progress", tags=["progress"])
 app.include_router(leaderboard.router, prefix="/api/leaderboard", tags=["leaderboard"])
 app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
 app.include_router(subscription.router, prefix="/api/subscription", tags=["subscription"])
+
+# Mount static files for photo serving
+storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")
+app.mount("/storage", StaticFiles(directory=storage_path), name="storage")
 
 
 @app.get("/")

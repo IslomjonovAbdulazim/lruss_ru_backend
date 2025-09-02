@@ -1,7 +1,9 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
+import aiofiles
+from pathlib import Path
 from app.database import get_db
 from app.models import User
 from app.schemas import User as UserSchema, UserUpdate
@@ -89,3 +91,62 @@ async def refresh_avatar(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to refresh avatar: {str(e)}"
         )
+
+
+@router.post("/upload-photo", response_model=UserSchema)
+async def upload_photo(
+    photo: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload user profile photo (max 1MB)"""
+    # Validate file size (1MB = 1048576 bytes)
+    MAX_SIZE = 1048576
+    
+    # Read file to check size
+    contents = await photo.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Photo size must be less than 1MB"
+        )
+    
+    # Validate file type
+    allowed_types = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+    if photo.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPEG, PNG and WebP images are allowed"
+        )
+    
+    # Get file extension
+    extension = Path(photo.filename).suffix.lower()
+    if not extension:
+        extension = ".jpg"  # Default extension
+    
+    # Create filename using phone number (unique per user)
+    phone_clean = current_user.phone_number.replace("+", "").replace("-", "").replace(" ", "")
+    filename = f"{phone_clean}{extension}"
+    
+    # Storage path
+    storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")
+    user_photos_dir = Path(storage_path) / "user_photos"
+    user_photos_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_path = user_photos_dir / filename
+    
+    # Save file (overwrites if exists)
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(contents)
+    
+    # Update user avatar_url to relative path
+    relative_path = f"/storage/user_photos/{filename}"
+    current_user.avatar_url = relative_path
+    
+    await db.commit()
+    await db.refresh(current_user)
+    
+    # Invalidate users cache
+    await invalidate_users_cache()
+    
+    return current_user

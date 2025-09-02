@@ -12,6 +12,9 @@ from pydantic import BaseModel
 import os
 from telegram import Bot
 from dotenv import load_dotenv
+import aiofiles
+from pathlib import Path
+import aiohttp
 
 load_dotenv()
 
@@ -96,12 +99,41 @@ async def login(auth_request: AuthRequest, db: AsyncSession = Depends(get_db)):
         if last_name:
             user.last_name = last_name
         
-        # Update avatar
-        if photos.photos:
-            file = await bot.get_file(photos.photos[0][-1].file_id)
-            user.avatar_url = file.file_path
-        else:
-            user.avatar_url = None
+        # Update avatar only if user doesn't have a local photo
+        if not user.avatar_url or not user.avatar_url.startswith("/storage/"):
+            if photos.photos:
+                try:
+                    # Download and save Telegram profile photo locally
+                    file = await bot.get_file(photos.photos[0][-1].file_id)
+                    file_url = f"https://api.telegram.org/file/bot{os.getenv('BOT_TOKEN')}/{file.file_path}"
+                    
+                    # Create filename using phone number
+                    phone_clean = user.phone_number.replace("+", "").replace("-", "").replace(" ", "")
+                    extension = Path(file.file_path).suffix.lower() or ".jpg"
+                    filename = f"{phone_clean}{extension}"
+                    
+                    # Storage path
+                    storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")
+                    user_photos_dir = Path(storage_path) / "user_photos"
+                    user_photos_dir.mkdir(parents=True, exist_ok=True)
+                    file_path = user_photos_dir / filename
+                    
+                    # Download and save file
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(file_url) as response:
+                            if response.status == 200:
+                                file_data = await response.read()
+                                # Check size limit (1MB)
+                                if len(file_data) <= 1048576:
+                                    async with aiofiles.open(file_path, "wb") as f:
+                                        await f.write(file_data)
+                                    user.avatar_url = f"/storage/user_photos/{filename}"
+                except Exception as e:
+                    print(f"Error saving Telegram photo: {e}")
+                    # Fallback to Telegram URL if local save fails
+                    user.avatar_url = file.file_path
+            else:
+                user.avatar_url = None
         
         await db.commit()
         await db.refresh(user)
