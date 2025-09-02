@@ -61,7 +61,7 @@ async def get_module(module_id: int, current_user: User = Depends(get_current_us
     """Get a specific module"""
     result = await db.execute(
         select(Module)
-        .options(selectinload(Module.lessons))
+        .options(selectinload(Module.lessons).selectinload(Lesson.packs))
         .where(Module.id == module_id)
     )
     module = result.scalar_one_or_none()
@@ -83,7 +83,7 @@ async def create_module(module: ModuleCreate, admin_user: User = Depends(get_adm
     # Reload with lessons for response
     result = await db.execute(
         select(Module)
-        .options(selectinload(Module.lessons))
+        .options(selectinload(Module.lessons).selectinload(Lesson.packs))
         .where(Module.id == db_module.id)
     )
     return result.scalar_one()
@@ -108,7 +108,7 @@ async def update_module(module_id: int, module_update: ModuleUpdate, admin_user:
     # Reload with lessons for response
     result = await db.execute(
         select(Module)
-        .options(selectinload(Module.lessons))
+        .options(selectinload(Module.lessons).selectinload(Lesson.packs))
         .where(Module.id == module_id)
     )
     return result.scalar_one()
