@@ -359,10 +359,14 @@ async def delete_subscription(
 
     subscription.is_active = False
     await db.commit()
+    await db.refresh(subscription)
     
     # Invalidate caches
-    await invalidate_user_subscription_cache(subscription.user_id)
-    await invalidate_subscriptions_list_cache()
+    try:
+        await invalidate_user_subscription_cache(subscription.user_id)
+        await invalidate_subscriptions_list_cache()
+    except Exception as e:
+        print(f"Cache invalidation warning: {e}")
 
     return {"message": "Subscription deleted successfully"}
 
