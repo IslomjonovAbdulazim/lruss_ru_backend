@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,6 +22,50 @@ from app.redis_client import (
 )
 
 router = APIRouter()
+
+
+async def save_word_audio(word_id: int, audio_file: UploadFile) -> str:
+    """Helper function to save word audio and return relative path"""
+    # Validate file size (1MB = 1048576 bytes)
+    MAX_SIZE = 1048576
+    
+    # Read file to check size
+    contents = await audio_file.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Audio size must be less than 1MB"
+        )
+    
+    # Validate file type
+    allowed_types = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/m4a"}
+    if audio_file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only MP3, WAV, OGG, M4A audio files are allowed"
+        )
+    
+    # Get file extension
+    extension = Path(audio_file.filename).suffix.lower()
+    if not extension:
+        extension = ".mp3"  # Default extension
+    
+    # Create filename using word ID (unique per word)
+    filename = f"{word_id}{extension}"
+    
+    # Storage path
+    storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")
+    word_audio_dir = Path(storage_path) / "word_audio"
+    word_audio_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_path = word_audio_dir / filename
+    
+    # Save file (overwrites if exists)
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(contents)
+    
+    # Return relative path
+    return f"/storage/word_audio/{filename}"
 
 
 
@@ -79,35 +123,70 @@ async def get_word(word_id: int, current_user: User = Depends(get_current_user),
 
 
 @router.post("/words", response_model=WordSchema, status_code=status.HTTP_201_CREATED)
-async def create_word(word: WordCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    """Create a new word"""
+async def create_word(
+    pack_id: int = Form(...),
+    ru_text: str = Form(...),
+    uz_text: str = Form(...),
+    audio: Optional[UploadFile] = File(None),
+    admin_user: User = Depends(get_admin_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new word with optional audio upload"""
     # Check if pack exists and is a word pack
-    pack_result = await db.execute(select(Pack).where(Pack.id == word.pack_id))
+    pack_result = await db.execute(select(Pack).where(Pack.id == pack_id))
     pack = pack_result.scalar_one_or_none()
     if not pack:
         raise HTTPException(status_code=404, detail="Pack not found")
     if pack.type != PackType.WORD:
         raise HTTPException(status_code=400, detail="Pack is not a word pack")
 
-    db_word = Word(**word.dict())
+    # Create word first
+    db_word = Word(
+        pack_id=pack_id,
+        ru_text=ru_text,
+        uz_text=uz_text,
+        audio_url=None
+    )
     db.add(db_word)
     await db.commit()
     await db.refresh(db_word)
-    await invalidate_words_cache_by_pack(word.pack_id)
+    
+    # Handle audio upload if provided
+    if audio:
+        audio_url = await save_word_audio(db_word.id, audio)
+        db_word.audio_url = audio_url
+        await db.commit()
+        await db.refresh(db_word)
+    
+    await invalidate_words_cache_by_pack(pack_id)
     return db_word
 
 
 @router.put("/words/{word_id}", response_model=WordSchema)
-async def update_word(word_id: int, word_update: WordUpdate, admin_user: User = Depends(get_admin_user),
-                      db: AsyncSession = Depends(get_db)):
-    """Update a word"""
+async def update_word(
+    word_id: int,
+    ru_text: Optional[str] = Form(None),
+    uz_text: Optional[str] = Form(None),
+    audio: Optional[UploadFile] = File(None),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a word with optional audio upload"""
     result = await db.execute(select(Word).where(Word.id == word_id))
     word = result.scalar_one_or_none()
     if not word:
         raise HTTPException(status_code=404, detail="Word not found")
 
-    for field, value in word_update.dict(exclude_unset=True).items():
-        setattr(word, field, value)
+    # Update text fields if provided
+    if ru_text is not None:
+        word.ru_text = ru_text
+    if uz_text is not None:
+        word.uz_text = uz_text
+
+    # Handle audio upload if provided
+    if audio:
+        audio_url = await save_word_audio(word_id, audio)
+        word.audio_url = audio_url
 
     await db.commit()
     await db.refresh(word)
@@ -143,47 +222,9 @@ async def upload_word_audio(
     if not word:
         raise HTTPException(status_code=404, detail="Word not found")
     
-    # Validate file size (1MB = 1048576 bytes)
-    MAX_SIZE = 1048576
-    
-    # Read file to check size
-    contents = await audio.read()
-    if len(contents) > MAX_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Audio size must be less than 1MB"
-        )
-    
-    # Validate file type
-    allowed_types = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/m4a"}
-    if audio.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only MP3, WAV, OGG, M4A audio files are allowed"
-        )
-    
-    # Get file extension
-    extension = Path(audio.filename).suffix.lower()
-    if not extension:
-        extension = ".mp3"  # Default extension
-    
-    # Create filename using word ID (unique per word)
-    filename = f"{word_id}{extension}"
-    
-    # Storage path
-    storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")
-    word_audio_dir = Path(storage_path) / "word_audio"
-    word_audio_dir.mkdir(parents=True, exist_ok=True)
-    
-    file_path = word_audio_dir / filename
-    
-    # Save file (overwrites if exists)
-    async with aiofiles.open(file_path, "wb") as f:
-        await f.write(contents)
-    
-    # Update word audio_url to relative path
-    relative_path = f"/storage/word_audio/{filename}"
-    word.audio_url = relative_path
+    # Use helper function to save audio
+    audio_url = await save_word_audio(word_id, audio)
+    word.audio_url = audio_url
     
     await db.commit()
     await db.refresh(word)
