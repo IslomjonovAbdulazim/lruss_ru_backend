@@ -283,19 +283,26 @@ async def get_packs(lesson_id: Optional[int] = Query(None), current_user: User =
     result = await db.execute(query)
     packs = result.scalars().all()
     
-    # Convert to dict for caching
-    packs_data = [
-        {
+    # Convert to dict for caching with dynamic word count
+    packs_data = []
+    for pack in packs:
+        # Count words dynamically for word packs, return 0 for grammar packs
+        if pack.type == PackType.WORD:
+            word_count = await db.scalar(
+                select(func.count(Word.id)).where(Word.pack_id == pack.id)
+            )
+        else:
+            word_count = 0
+            
+        packs_data.append({
             "id": pack.id,
             "title": pack.title,
             "lesson_id": pack.lesson_id,
             "type": pack.type.value,
-            "word_count": pack.word_count,
+            "word_count": word_count,
             "created_at": pack.created_at,
             "updated_at": pack.updated_at
-        }
-        for pack in packs
-    ]
+        })
     
     # Cache if filtered by lesson_id
     if lesson_id:
@@ -306,12 +313,30 @@ async def get_packs(lesson_id: Optional[int] = Query(None), current_user: User =
 
 @router.get("/packs/{pack_id}", response_model=PackSchema)
 async def get_pack(pack_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get a specific pack"""
+    """Get a specific pack with dynamic word count"""
     result = await db.execute(select(Pack).where(Pack.id == pack_id))
     pack = result.scalar_one_or_none()
     if not pack:
         raise HTTPException(status_code=404, detail="Pack not found")
-    return pack
+    
+    # Count words dynamically for word packs, return 0 for grammar packs
+    if pack.type == PackType.WORD:
+        word_count = await db.scalar(
+            select(func.count(Word.id)).where(Word.pack_id == pack_id)
+        )
+    else:
+        word_count = 0
+    
+    # Return pack with updated word count
+    return {
+        "id": pack.id,
+        "title": pack.title,
+        "lesson_id": pack.lesson_id,
+        "type": pack.type.value,
+        "word_count": word_count,
+        "created_at": pack.created_at,
+        "updated_at": pack.updated_at
+    }
 
 
 @router.post("/packs", response_model=PackSchema, status_code=status.HTTP_201_CREATED)
