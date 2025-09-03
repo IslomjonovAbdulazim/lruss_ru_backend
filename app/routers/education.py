@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from app.database import get_db
-from app.models import Module, Lesson, Pack, PackType, User
+from app.models import Module, Lesson, Pack, PackType, User, Word, Grammar, GrammarTopic
 from app.schemas import (
     Module as ModuleSchema, ModuleCreate, ModuleUpdate,
     Lesson as LessonSchema, LessonCreate, LessonUpdate,
@@ -116,11 +116,21 @@ async def update_module(module_id: int, module_update: ModuleUpdate, admin_user:
 
 @router.delete("/modules/{module_id}")
 async def delete_module(module_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    """Delete a module"""
+    """Delete a module (only if it has no lessons)"""
     result = await db.execute(select(Module).where(Module.id == module_id))
     module = result.scalar_one_or_none()
     if not module:
         raise HTTPException(status_code=404, detail="Module not found")
+
+    # Check if module has lessons
+    lesson_count = await db.scalar(
+        select(func.count(Lesson.id)).where(Lesson.module_id == module_id)
+    )
+    if lesson_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete module: it contains {lesson_count} lesson(s). Delete all lessons first."
+        )
 
     await db.delete(module)
     await db.commit()
@@ -233,11 +243,21 @@ async def update_lesson(lesson_id: int, lesson_update: LessonUpdate, admin_user:
 
 @router.delete("/lessons/{lesson_id}")
 async def delete_lesson(lesson_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    """Delete a lesson"""
+    """Delete a lesson (only if it has no packs)"""
     result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
     lesson = result.scalar_one_or_none()
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
+
+    # Check if lesson has packs
+    pack_count = await db.scalar(
+        select(func.count(Pack.id)).where(Pack.lesson_id == lesson_id)
+    )
+    if pack_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete lesson: it contains {pack_count} pack(s). Delete all packs first."
+        )
 
     await db.delete(lesson)
     await db.commit()
@@ -356,11 +376,35 @@ async def update_pack(pack_id: int, pack_update: PackUpdate, admin_user: User = 
 
 @router.delete("/packs/{pack_id}")
 async def delete_pack(pack_id: int, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    """Delete a pack"""
+    """Delete a pack (only if it has no content)"""
     result = await db.execute(select(Pack).where(Pack.id == pack_id))
     pack = result.scalar_one_or_none()
     if not pack:
         raise HTTPException(status_code=404, detail="Pack not found")
+
+    # Check if pack has content based on its type
+    if pack.type == PackType.WORD:
+        word_count = await db.scalar(
+            select(func.count(Word.id)).where(Word.pack_id == pack_id)
+        )
+        if word_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete word pack: it contains {word_count} word(s). Delete all words first."
+            )
+    elif pack.type == PackType.GRAMMAR:
+        grammar_count = await db.scalar(
+            select(func.count(Grammar.id)).where(Grammar.pack_id == pack_id)
+        )
+        grammar_topic_count = await db.scalar(
+            select(func.count(GrammarTopic.id)).where(GrammarTopic.pack_id == pack_id)
+        )
+        total_content = grammar_count + grammar_topic_count
+        if total_content > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete grammar pack: it contains {grammar_count} grammar question(s) and {grammar_topic_count} grammar topic(s). Delete all content first."
+            )
 
     # Get lesson info before deleting pack
     lesson_result = await db.execute(select(Lesson).where(Lesson.id == pack.lesson_id))
@@ -369,6 +413,10 @@ async def delete_pack(pack_id: int, admin_user: User = Depends(get_admin_user), 
     await db.delete(pack)
     await db.commit()
     
-    await invalidate_packs_cache_by_lesson(pack.lesson_id)
-    await invalidate_lessons_cache_by_module(lesson.module_id)
+    try:
+        await invalidate_packs_cache_by_lesson(pack.lesson_id)
+        await invalidate_lessons_cache_by_module(lesson.module_id)
+    except Exception as e:
+        print(f"Cache invalidation warning: {e}")
+        
     return {"message": "Pack deleted successfully"}
