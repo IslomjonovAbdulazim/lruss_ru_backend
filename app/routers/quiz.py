@@ -127,11 +127,11 @@ async def create_word(
     pack_id: int = Form(...),
     ru_text: str = Form(...),
     uz_text: str = Form(...),
-    audio: UploadFile = File(...),
+    audio: Optional[UploadFile] = File(None),
     admin_user: User = Depends(get_admin_user), 
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new word with audio upload"""
+    """Create a new word with optional audio upload"""
     # Check if pack exists and is a word pack
     pack_result = await db.execute(select(Pack).where(Pack.id == pack_id))
     pack = pack_result.scalar_one_or_none()
@@ -140,7 +140,7 @@ async def create_word(
     if pack.type != PackType.WORD:
         raise HTTPException(status_code=400, detail="Pack is not a word pack")
 
-    # Create word first
+    # Create word
     db_word = Word(
         pack_id=pack_id,
         ru_text=ru_text,
@@ -151,11 +151,12 @@ async def create_word(
     await db.commit()
     await db.refresh(db_word)
     
-    # Save audio and update word
-    audio_url = await save_word_audio(db_word.id, audio)
-    db_word.audio_url = audio_url
-    await db.commit()
-    await db.refresh(db_word)
+    # Handle audio upload if provided
+    if audio and audio.filename:
+        audio_url = await save_word_audio(db_word.id, audio)
+        db_word.audio_url = audio_url
+        await db.commit()
+        await db.refresh(db_word)
     
     await invalidate_words_cache_by_pack(pack_id)
     return db_word
