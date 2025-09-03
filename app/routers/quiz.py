@@ -123,70 +123,35 @@ async def get_word(word_id: int, current_user: User = Depends(get_current_user),
 
 
 @router.post("/words", response_model=WordSchema, status_code=status.HTTP_201_CREATED)
-async def create_word(
-    pack_id: int = Form(...),
-    ru_text: str = Form(...),
-    uz_text: str = Form(...),
-    audio: Optional[UploadFile] = File(None),
-    admin_user: User = Depends(get_admin_user), 
-    db: AsyncSession = Depends(get_db)
-):
-    """Create a new word with optional audio upload"""
+async def create_word(word: WordCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Create a new word"""
     # Check if pack exists and is a word pack
-    pack_result = await db.execute(select(Pack).where(Pack.id == pack_id))
+    pack_result = await db.execute(select(Pack).where(Pack.id == word.pack_id))
     pack = pack_result.scalar_one_or_none()
     if not pack:
         raise HTTPException(status_code=404, detail="Pack not found")
     if pack.type != PackType.WORD:
         raise HTTPException(status_code=400, detail="Pack is not a word pack")
 
-    # Create word
-    db_word = Word(
-        pack_id=pack_id,
-        ru_text=ru_text,
-        uz_text=uz_text,
-        audio_url=None
-    )
+    db_word = Word(**word.dict())
     db.add(db_word)
     await db.commit()
     await db.refresh(db_word)
-    
-    # Handle audio upload if provided
-    if audio and audio.filename:
-        audio_url = await save_word_audio(db_word.id, audio)
-        db_word.audio_url = audio_url
-        await db.commit()
-        await db.refresh(db_word)
-    
-    await invalidate_words_cache_by_pack(pack_id)
+    await invalidate_words_cache_by_pack(word.pack_id)
     return db_word
 
 
 @router.put("/words/{word_id}", response_model=WordSchema)
-async def update_word(
-    word_id: int,
-    ru_text: Optional[str] = Form(None),
-    uz_text: Optional[str] = Form(None),
-    audio: Optional[UploadFile] = File(None),
-    admin_user: User = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Update a word with optional audio upload"""
+async def update_word(word_id: int, word_update: WordUpdate, admin_user: User = Depends(get_admin_user),
+                      db: AsyncSession = Depends(get_db)):
+    """Update a word"""
     result = await db.execute(select(Word).where(Word.id == word_id))
     word = result.scalar_one_or_none()
     if not word:
         raise HTTPException(status_code=404, detail="Word not found")
 
-    # Update text fields if provided
-    if ru_text is not None:
-        word.ru_text = ru_text
-    if uz_text is not None:
-        word.uz_text = uz_text
-
-    # Handle audio upload if provided
-    if audio:
-        audio_url = await save_word_audio(word_id, audio)
-        word.audio_url = audio_url
+    for field, value in word_update.dict(exclude_unset=True).items():
+        setattr(word, field, value)
 
     await db.commit()
     await db.refresh(word)
