@@ -52,18 +52,17 @@ async def update_grammar_topics_cache(db: AsyncSession):
     return grammar_topics_data
 
 
-# SINGLE GET ENDPOINT FOR ALL GRAMMAR TOPICS
-@router.get("/topics", response_model=GrammarTopicsResponse)
-async def get_grammar_topics(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Get all grammar topics from all packs from cache"""
-    # Try to get from cache first
-    cached_data = await get_grammar_topics_cache()
-    if cached_data:
-        return cached_data
-
-    # If not in cache, get from database and cache it
-    grammar_topics_data = await update_grammar_topics_cache(db)
-    return grammar_topics_data
+# GET TOPIC BY PACK ID
+@router.get("/topics", response_model=GrammarTopicSchema)
+async def get_grammar_topic_by_pack(pack_id: int = Query(...), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get grammar topic for specific pack"""
+    result = await db.execute(
+        select(GrammarTopic).where(GrammarTopic.pack_id == pack_id)
+    )
+    topic = result.scalar_one_or_none()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Grammar topic not found for this pack")
+    return topic
 
 
 # GRAMMAR TOPIC CRUD
