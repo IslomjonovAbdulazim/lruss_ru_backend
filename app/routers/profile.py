@@ -112,11 +112,11 @@ async def upload_photo(
         )
     
     # Validate file type
-    allowed_types = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+    allowed_types = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"}
     if photo.content_type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only JPEG, PNG and WebP images are allowed"
+            detail="Only JPEG, PNG, WebP, HEIC and HEIF images are allowed"
         )
     
     # Get file extension
