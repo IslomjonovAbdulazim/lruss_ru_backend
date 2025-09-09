@@ -139,7 +139,7 @@ async def check_subscription(
             )
             .order_by(UserSubscription.end_date.desc())
         )
-        active_sub = db_result.scalar_one_or_none()
+        active_sub = db_result.scalars().first()
 
         if active_sub:
             days_remaining = (active_sub.end_date - now).days
