@@ -111,9 +111,13 @@ async def upload_photo(
             detail="Photo size must be less than 1MB"
         )
     
-    # Validate file type
-    allowed_types = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"}
-    if photo.content_type not in allowed_types:
+    # Validate file type - check both content type and file extension
+    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+    
+    file_extension = Path(photo.filename).suffix.lower()
+    
+    if photo.content_type not in allowed_types and file_extension not in allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only JPEG, PNG, WebP, HEIC and HEIF images are allowed"
