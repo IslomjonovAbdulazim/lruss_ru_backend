@@ -145,14 +145,15 @@ async def upload_photo(
             await f.write(contents)
         print(f"✅ Photo saved to: {file_path}")
         
-        # Update user avatar_url to relative path and force timestamp update
-        relative_path = f"/storage/user_photos/{filename}"
+        # Update user avatar_url with cache-busting parameter
+        timestamp = int(time.time())
+        relative_path = f"/storage/user_photos/{filename}?t={timestamp}"
         old_avatar = current_user.avatar_url
         current_user.avatar_url = relative_path
         # Force updated_at to change by explicitly marking as modified
         from sqlalchemy import text
         await db.execute(text("UPDATE users SET updated_at = NOW() WHERE id = :user_id"), {"user_id": current_user.id})
-        print(f"🔄 Avatar URL: {old_avatar} -> {relative_path} (file overwritten)")
+        print(f"🔄 Avatar URL: {old_avatar} -> {relative_path} (cache-busted)")
         
         await db.commit()
         await db.refresh(current_user)
