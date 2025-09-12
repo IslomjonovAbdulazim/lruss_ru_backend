@@ -64,9 +64,8 @@ async def refresh_avatar(
         photos = await bot.get_user_profile_photos(current_user.telegram_id, limit=1)
         
         if photos.photos:
-            file = await bot.get_file(photos.photos[0][-1].file_id)
-            avatar_url = file.file_path
-            current_user.avatar_url = avatar_url
+            # Don't use Telegram URLs directly - set to None so login can handle it properly
+            current_user.avatar_url = None
         else:
             current_user.avatar_url = None
         
@@ -139,18 +138,30 @@ async def upload_photo(
     
     file_path = user_photos_dir / filename
     
-    # Save file (overwrites if exists)
-    async with aiofiles.open(file_path, "wb") as f:
-        await f.write(contents)
-    
-    # Update user avatar_url to relative path
-    relative_path = f"/storage/user_photos/{filename}"
-    current_user.avatar_url = relative_path
-    
-    await db.commit()
-    await db.refresh(current_user)
-    
-    # Invalidate users cache
-    await invalidate_users_cache()
-    
-    return current_user
+    try:
+        # Save file (overwrites if exists)
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(contents)
+        print(f"✅ Photo saved to: {file_path}")
+        
+        # Update user avatar_url to relative path
+        relative_path = f"/storage/user_photos/{filename}"
+        old_avatar = current_user.avatar_url
+        current_user.avatar_url = relative_path
+        print(f"🔄 Avatar URL changed: {old_avatar} -> {relative_path}")
+        
+        await db.commit()
+        await db.refresh(current_user)
+        print(f"✅ Database updated for user {current_user.id}")
+        
+        # Invalidate users cache
+        await invalidate_users_cache()
+        
+        return current_user
+        
+    except Exception as e:
+        print(f"❌ Error uploading photo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload photo: {str(e)}"
+        )

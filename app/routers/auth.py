@@ -149,15 +149,22 @@ async def login(auth_request: AuthRequest, db: AsyncSession = Depends(get_db)):
                             if response.status == 200:
                                 file_data = await response.read()
                                 # Check size limit (1MB)
-                                if len(file_data) <= 1048576:
+                                if len(file_data) <= 1048576 and len(file_data) > 0:
                                     async with aiofiles.open(file_path, "wb") as f:
                                         await f.write(file_data)
                                     user.avatar_url = f"/storage/user_photos/{filename}"
+                                    print(f"✅ Profile photo saved locally: {filename}")
+                                else:
+                                    print(f"❌ Photo too large or empty: {len(file_data)} bytes")
+                                    user.avatar_url = None
+                            else:
+                                print(f"❌ Failed to download photo: HTTP {response.status}")
+                                user.avatar_url = None
                 except Exception as e:
-                    print(f"Error saving Telegram photo: {e}")
-                    # Fallback to Telegram URL if local save fails
-                    user.avatar_url = file.file_path
+                    print(f"❌ Error saving Telegram photo: {e}")
+                    user.avatar_url = None
             else:
+                print("ℹ️ No profile photos available from Telegram")
                 user.avatar_url = None
         
         await db.commit()
