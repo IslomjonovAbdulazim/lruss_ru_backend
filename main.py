@@ -10,6 +10,12 @@ from app.routers import auth, profile, education, quiz, grammar_topics, admin, p
 from app.telegram_bot import start_bot
 from app.redis_client import close_redis
 from app.routers.leaderboard import start_leaderboard_scheduler, stop_leaderboard_scheduler
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Global hardcoded passkey for testing purposes - loaded from .env
+TEST_PASSKEY = os.getenv("TEST_PASSKEY")
 
 
 @asynccontextmanager

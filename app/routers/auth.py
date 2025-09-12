@@ -79,13 +79,20 @@ async def login(auth_request: AuthRequest, db: AsyncSession = Depends(get_db)):
             detail="Authentication service temporarily unavailable for this account"
         )
     
-    cached_code = await get_otp_code(phone_number)
-    
-    if not cached_code or cached_code != auth_request.code:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired code"
-        )
+    # Check hardcoded test passkey first (loaded from .env at startup)
+    from main import TEST_PASSKEY
+    if TEST_PASSKEY and auth_request.code == TEST_PASSKEY:
+        # Allow login with test passkey
+        pass
+    else:
+        # Check OTP from database/redis
+        cached_code = await get_otp_code(phone_number)
+        
+        if not cached_code or cached_code != auth_request.code:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired code"
+            )
     
     user_result = await db.execute(
         select(User).where(User.phone_number == phone_number)
@@ -98,7 +105,9 @@ async def login(auth_request: AuthRequest, db: AsyncSession = Depends(get_db)):
             detail="User not found"
         )
     
-    await delete_otp_code(phone_number)
+    # Only delete OTP if it wasn't a test passkey login
+    if not (TEST_PASSKEY and auth_request.code == TEST_PASSKEY):
+        await delete_otp_code(phone_number)
     
     # Refresh user profile from Telegram on each login
     try:
