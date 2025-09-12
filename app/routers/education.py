@@ -4,12 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from app.database import get_db
-from app.models import Module, Lesson, Pack, PackType, User, Word, Grammar, GrammarTopic
+from app.models import Module, Lesson, Pack, PackType, User, Word, Grammar, GrammarTopic, UserProgress
 from app.schemas import (
     Module as ModuleSchema, ModuleCreate, ModuleUpdate,
     Lesson as LessonSchema, LessonCreate, LessonUpdate,
     Pack as PackSchema, PackCreate, PackUpdate,
-    LessonsResponse
+    LessonsResponse,
+    StudentContentResponse, ModuleWithProgress, LessonWithProgress
 )
 from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import (
@@ -22,6 +23,136 @@ from app.redis_client import (
 router = APIRouter()
 
 
+@router.get("/student-content", response_model=StudentContentResponse)
+async def get_student_content_with_progress(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all modules with lessons and user progress percentages"""
+    
+    # Get all modules with lessons and packs
+    modules_result = await db.execute(
+        select(Module)
+        .options(
+            selectinload(Module.lessons)
+            .selectinload(Lesson.packs)
+        )
+        .order_by(Module.order)
+    )
+    modules = modules_result.scalars().all()
+    
+    # Get all user progress
+    user_progress_result = await db.execute(
+        select(UserProgress, Pack.lesson_id, Lesson.module_id)
+        .join(Pack, UserProgress.pack_id == Pack.id)
+        .join(Lesson, Pack.lesson_id == Lesson.id)
+        .where(UserProgress.user_id == current_user.id)
+    )
+    
+    # Build progress lookup dictionaries
+    pack_progress = {}  # pack_id -> best_score
+    lesson_progress = {}  # lesson_id -> {completed_packs, total_score}
+    module_progress = {}  # module_id -> {completed_lessons, total_score}
+    
+    for progress, lesson_id, module_id in user_progress_result:
+        pack_progress[progress.pack_id] = progress.best_score
+        
+        # Aggregate lesson progress
+        if lesson_id not in lesson_progress:
+            lesson_progress[lesson_id] = {'completed_packs': 0, 'total_score': 0}
+        lesson_progress[lesson_id]['completed_packs'] += 1
+        lesson_progress[lesson_id]['total_score'] += progress.best_score
+        
+        # Track which lessons have progress for module calculation
+        if module_id not in module_progress:
+            module_progress[module_id] = set()
+        module_progress[module_id].add(lesson_id)
+    
+    # Build response with progress calculations
+    modules_with_progress = []
+    total_lessons = 0
+    completed_lessons = 0
+    overall_score_sum = 0
+    overall_completed_packs = 0
+    
+    for module in modules:
+        lessons_with_progress = []
+        module_completed_lessons = 0
+        module_lesson_scores = []
+        
+        for lesson in module.lessons:
+            total_lessons += 1
+            total_packs = len(lesson.packs)
+            completed_packs = 0
+            lesson_score_sum = 0
+            
+            # Calculate lesson progress
+            for pack in lesson.packs:
+                if pack.id in pack_progress:
+                    completed_packs += 1
+                    lesson_score_sum += pack_progress[pack.id]
+            
+            # Calculate lesson percentage
+            if total_packs > 0:
+                lesson_percentage = (lesson_score_sum / (total_packs * 100)) * 100
+                is_lesson_completed = completed_packs == total_packs
+            else:
+                lesson_percentage = 0.0
+                is_lesson_completed = True  # Empty lessons are considered complete
+                
+            if is_lesson_completed and total_packs > 0:
+                completed_lessons += 1
+                module_completed_lessons += 1
+            
+            if completed_packs > 0:
+                module_lesson_scores.append(lesson_percentage)
+                overall_score_sum += lesson_score_sum
+                overall_completed_packs += completed_packs
+            
+            lessons_with_progress.append(LessonWithProgress(
+                id=lesson.id,
+                title=lesson.title,
+                description=lesson.description,
+                module_id=lesson.module_id,
+                order=lesson.order,
+                progress_percentage=round(lesson_percentage, 1),
+                total_packs=total_packs,
+                completed_packs=completed_packs,
+                created_at=lesson.created_at,
+                updated_at=lesson.updated_at
+            ))
+        
+        # Calculate module percentage
+        total_module_lessons = len(module.lessons)
+        if total_module_lessons > 0 and module_lesson_scores:
+            module_percentage = sum(module_lesson_scores) / len(module_lesson_scores)
+        else:
+            module_percentage = 0.0
+        
+        modules_with_progress.append(ModuleWithProgress(
+            id=module.id,
+            title=module.title,
+            order=module.order,
+            progress_percentage=round(module_percentage, 1),
+            total_lessons=total_module_lessons,
+            completed_lessons=module_completed_lessons,
+            lessons=lessons_with_progress,
+            created_at=module.created_at,
+            updated_at=module.updated_at
+        ))
+    
+    # Calculate overall progress percentage
+    if total_lessons > 0 and completed_lessons > 0:
+        overall_percentage = (completed_lessons / total_lessons) * 100
+    else:
+        overall_percentage = 0.0
+    
+    return StudentContentResponse(
+        modules=modules_with_progress,
+        total_modules=len(modules),
+        total_lessons=total_lessons,
+        overall_progress_percentage=round(overall_percentage, 1)
+    )
 
 
 

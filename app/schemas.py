@@ -309,6 +309,45 @@ class TranslationResponse(BaseModel):
     from_cache: bool
 
 
+# Student Progress Enhanced Schemas
+class LessonWithProgress(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    module_id: int
+    order: int
+    progress_percentage: float  # 0.0 to 100.0
+    total_packs: int
+    completed_packs: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ModuleWithProgress(BaseModel):
+    id: int
+    title: str
+    order: int
+    progress_percentage: float  # 0.0 to 100.0
+    total_lessons: int
+    completed_lessons: int
+    lessons: List[LessonWithProgress] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StudentContentResponse(BaseModel):
+    modules: List[ModuleWithProgress]
+    total_modules: int
+    total_lessons: int
+    overall_progress_percentage: float
+
+
 # Subscription Schemas
 class UserSubscriptionBase(BaseModel):
     start_date: datetime
