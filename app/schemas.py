@@ -378,6 +378,34 @@ class LessonPacksResponse(BaseModel):
     lesson_progress_percentage: float
 
 
+# Word Pack Schemas
+class WordSimple(BaseModel):
+    id: int
+    ru_text: Optional[str] = None
+    uz_text: Optional[str] = None
+    audio_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PackWordsUserProgress(BaseModel):
+    best_score: int
+    total_points: int
+    completed: bool
+    last_attempt: Optional[datetime] = None
+
+
+class PackWordsResponse(BaseModel):
+    pack_id: int
+    pack_title: str
+    pack_type: str
+    lesson_title: str
+    words: List[WordSimple]
+    total_words: int
+    user_progress: PackWordsUserProgress
+
+
 # Subscription Schemas
 class UserSubscriptionBase(BaseModel):
     start_date: datetime

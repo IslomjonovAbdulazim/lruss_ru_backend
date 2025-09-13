@@ -11,7 +11,8 @@ from app.schemas import (
     Pack as PackSchema, PackCreate, PackUpdate,
     LessonsResponse,
     StudentContentResponse, ModuleWithProgress, LessonWithProgress,
-    LessonPacksResponse, PackWithProgress, PackUserProgress
+    LessonPacksResponse, PackWithProgress, PackUserProgress,
+    PackWordsResponse, WordSimple, PackWordsUserProgress
 )
 from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import (
@@ -207,6 +208,90 @@ async def get_lesson_packs_with_progress(
         total_packs=total_packs,
         completed_packs=completed_packs,
         lesson_progress_percentage=round(lesson_progress_percentage, 1)
+    )
+
+
+@router.get("/pack/{pack_id}/words", response_model=PackWordsResponse)
+async def get_pack_words(
+    pack_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all words for a word pack"""
+    
+    # Get pack with lesson info
+    pack_result = await db.execute(
+        select(Pack, Lesson.title.label('lesson_title'))
+        .join(Lesson, Pack.lesson_id == Lesson.id)
+        .where(Pack.id == pack_id)
+    )
+    pack_data = pack_result.first()
+    
+    if not pack_data:
+        raise HTTPException(status_code=404, detail="Pack not found")
+    
+    pack, lesson_title = pack_data
+    
+    # Check if it's a word pack
+    if pack.type != PackType.WORD:
+        raise HTTPException(
+            status_code=400, 
+            detail="This endpoint only works for word packs"
+        )
+    
+    # Get all words in this pack
+    words_result = await db.execute(
+        select(Word)
+        .where(Word.pack_id == pack_id)
+        .order_by(Word.id)
+    )
+    words = words_result.scalars().all()
+    
+    # Get user progress for this pack
+    user_progress_result = await db.execute(
+        select(UserProgress)
+        .where(
+            UserProgress.pack_id == pack_id,
+            UserProgress.user_id == current_user.id
+        )
+    )
+    user_progress = user_progress_result.scalar_one_or_none()
+    
+    # Build user progress object
+    if user_progress:
+        progress_data = PackWordsUserProgress(
+            best_score=user_progress.best_score,
+            total_points=user_progress.total_points,
+            completed=True,
+            last_attempt=user_progress.updated_at
+        )
+    else:
+        progress_data = PackWordsUserProgress(
+            best_score=0,
+            total_points=0,
+            completed=False,
+            last_attempt=None
+        )
+    
+    # Convert words to simple format
+    word_list = [
+        WordSimple(
+            id=word.id,
+            ru_text=word.ru_text,
+            uz_text=word.uz_text,
+            audio_url=word.audio_url
+        )
+        for word in words
+    ]
+    
+    return PackWordsResponse(
+        pack_id=pack.id,
+        pack_title=pack.title,
+        pack_type=pack.type.value,
+        lesson_title=lesson_title,
+        words=word_list,
+        total_words=len(word_list),
+        user_progress=progress_data
     )
 
 
