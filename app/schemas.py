@@ -348,6 +348,36 @@ class StudentContentResponse(BaseModel):
     overall_progress_percentage: float
 
 
+# Pack Progress Schemas
+class PackUserProgress(BaseModel):
+    best_score: int
+    total_points: int
+    completed: bool
+
+
+class PackWithProgress(BaseModel):
+    id: int
+    title: str
+    type: PackTypeEnum
+    order: int
+    word_count: int
+    user_progress: PackUserProgress
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LessonPacksResponse(BaseModel):
+    lesson_id: int
+    lesson_title: str
+    packs: List[PackWithProgress]
+    total_packs: int
+    completed_packs: int
+    lesson_progress_percentage: float
+
+
 # Subscription Schemas
 class UserSubscriptionBase(BaseModel):
     start_date: datetime

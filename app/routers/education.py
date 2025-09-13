@@ -10,7 +10,8 @@ from app.schemas import (
     Lesson as LessonSchema, LessonCreate, LessonUpdate,
     Pack as PackSchema, PackCreate, PackUpdate,
     LessonsResponse,
-    StudentContentResponse, ModuleWithProgress, LessonWithProgress
+    StudentContentResponse, ModuleWithProgress, LessonWithProgress,
+    LessonPacksResponse, PackWithProgress, PackUserProgress
 )
 from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import (
@@ -116,6 +117,96 @@ async def get_student_content_with_progress(
         total_modules=len(modules),
         total_lessons=total_lessons,
         overall_progress_percentage=0.0  # Simplified - can calculate if needed
+    )
+
+
+@router.get("/lesson/{lesson_id}/packs", response_model=LessonPacksResponse)
+async def get_lesson_packs_with_progress(
+    lesson_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all packs for a lesson with user progress"""
+    
+    # Get lesson with packs
+    lesson_result = await db.execute(
+        select(Lesson)
+        .options(selectinload(Lesson.packs))
+        .where(Lesson.id == lesson_id)
+    )
+    lesson = lesson_result.scalar_one_or_none()
+    
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    
+    # Get user progress for all packs in this lesson
+    user_progress_result = await db.execute(
+        select(UserProgress)
+        .join(Pack, UserProgress.pack_id == Pack.id)
+        .where(Pack.lesson_id == lesson_id, UserProgress.user_id == current_user.id)
+    )
+    user_progress_list = user_progress_result.scalars().all()
+    
+    # Create progress lookup: pack_id -> progress
+    progress_lookup = {progress.pack_id: progress for progress in user_progress_list}
+    
+    # Build packs with progress
+    packs_with_progress = []
+    total_score = 0
+    completed_packs = 0
+    
+    # Sort packs by order (assuming they have an order field, if not use id)
+    sorted_packs = sorted(lesson.packs, key=lambda p: getattr(p, 'order', p.id))
+    
+    for pack in sorted_packs:
+        # Get word count for word packs
+        if pack.type == PackType.WORD:
+            word_count = await db.scalar(
+                select(func.count(Word.id)).where(Word.pack_id == pack.id)
+            )
+        else:
+            word_count = 0
+        
+        # Get user progress for this pack
+        if pack.id in progress_lookup:
+            progress = progress_lookup[pack.id]
+            user_progress = PackUserProgress(
+                best_score=progress.best_score,
+                total_points=progress.total_points,
+                completed=True
+            )
+            total_score += progress.best_score
+            completed_packs += 1
+        else:
+            user_progress = PackUserProgress(
+                best_score=0,
+                total_points=0,
+                completed=False
+            )
+        
+        pack_with_progress = PackWithProgress(
+            id=pack.id,
+            title=pack.title,
+            type=pack.type,
+            order=getattr(pack, 'order', 0),
+            word_count=word_count,
+            user_progress=user_progress,
+            created_at=pack.created_at,
+            updated_at=pack.updated_at
+        )
+        packs_with_progress.append(pack_with_progress)
+    
+    # Calculate lesson progress percentage
+    total_packs = len(packs_with_progress)
+    lesson_progress_percentage = (total_score / (total_packs * 100)) * 100 if total_packs > 0 else 0.0
+    
+    return LessonPacksResponse(
+        lesson_id=lesson.id,
+        lesson_title=lesson.title,
+        packs=packs_with_progress,
+        total_packs=total_packs,
+        completed_packs=completed_packs,
+        lesson_progress_percentage=round(lesson_progress_percentage, 1)
     )
 
 
