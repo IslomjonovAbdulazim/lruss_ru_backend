@@ -406,6 +406,47 @@ class PackWordsResponse(BaseModel):
     user_progress: PackWordsUserProgress
 
 
+# Grammar Pack Schemas
+class GrammarQuestion(BaseModel):
+    id: int
+    type: GrammarTypeEnum
+    question_text: Optional[str] = None
+    options: Optional[List[str]] = None  # Parsed from JSON string
+    correct_option: Optional[int] = None
+    sentence: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GrammarTopicSimple(BaseModel):
+    id: int
+    video_url: Optional[str] = None
+    markdown_text: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PackGrammarUserProgress(BaseModel):
+    best_score: int
+    total_points: int
+    completed: bool
+    last_attempt: Optional[datetime] = None
+
+
+class PackGrammarResponse(BaseModel):
+    pack_id: int
+    pack_title: str
+    pack_type: str
+    lesson_title: str
+    grammar_questions: List[GrammarQuestion]
+    grammar_topics: List[GrammarTopicSimple]
+    total_questions: int
+    total_topics: int
+    user_progress: PackGrammarUserProgress
+
+
 # Subscription Schemas
 class UserSubscriptionBase(BaseModel):
     start_date: datetime

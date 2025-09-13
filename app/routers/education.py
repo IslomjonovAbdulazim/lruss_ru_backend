@@ -12,7 +12,8 @@ from app.schemas import (
     LessonsResponse,
     StudentContentResponse, ModuleWithProgress, LessonWithProgress,
     LessonPacksResponse, PackWithProgress, PackUserProgress,
-    PackWordsResponse, WordSimple, PackWordsUserProgress
+    PackWordsResponse, WordSimple, PackWordsUserProgress,
+    PackGrammarResponse, GrammarQuestion, GrammarTopicSimple, PackGrammarUserProgress
 )
 from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import (
@@ -291,6 +292,120 @@ async def get_pack_words(
         lesson_title=lesson_title,
         words=word_list,
         total_words=len(word_list),
+        user_progress=progress_data
+    )
+
+
+@router.get("/pack/{pack_id}/grammar", response_model=PackGrammarResponse)
+async def get_pack_grammar(
+    pack_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all grammar questions and topics for a grammar pack"""
+    
+    # Get pack with lesson info
+    pack_result = await db.execute(
+        select(Pack, Lesson.title.label('lesson_title'))
+        .join(Lesson, Pack.lesson_id == Lesson.id)
+        .where(Pack.id == pack_id)
+    )
+    pack_data = pack_result.first()
+    
+    if not pack_data:
+        raise HTTPException(status_code=404, detail="Pack not found")
+    
+    pack, lesson_title = pack_data
+    
+    # Check if it's a grammar pack
+    if pack.type != PackType.GRAMMAR:
+        raise HTTPException(
+            status_code=400, 
+            detail="This endpoint only works for grammar packs"
+        )
+    
+    # Get all grammar questions in this pack
+    grammar_result = await db.execute(
+        select(Grammar)
+        .where(Grammar.pack_id == pack_id)
+        .order_by(Grammar.id)
+    )
+    grammar_questions = grammar_result.scalars().all()
+    
+    # Get all grammar topics in this pack
+    topics_result = await db.execute(
+        select(GrammarTopic)
+        .where(GrammarTopic.pack_id == pack_id)
+        .order_by(GrammarTopic.id)
+    )
+    grammar_topics = topics_result.scalars().all()
+    
+    # Get user progress for this pack
+    user_progress_result = await db.execute(
+        select(UserProgress)
+        .where(
+            UserProgress.pack_id == pack_id,
+            UserProgress.user_id == current_user.id
+        )
+    )
+    user_progress = user_progress_result.scalar_one_or_none()
+    
+    # Build user progress object
+    if user_progress:
+        progress_data = PackGrammarUserProgress(
+            best_score=user_progress.best_score,
+            total_points=user_progress.total_points,
+            completed=True,
+            last_attempt=user_progress.updated_at
+        )
+    else:
+        progress_data = PackGrammarUserProgress(
+            best_score=0,
+            total_points=0,
+            completed=False,
+            last_attempt=None
+        )
+    
+    # Convert grammar questions to simple format
+    import json
+    question_list = []
+    for grammar in grammar_questions:
+        # Parse options JSON if it exists
+        options = None
+        if grammar.options:
+            try:
+                options = json.loads(grammar.options)
+            except json.JSONDecodeError:
+                options = None
+        
+        question_list.append(GrammarQuestion(
+            id=grammar.id,
+            type=grammar.type,
+            question_text=grammar.question_text,
+            options=options,
+            correct_option=grammar.correct_option,
+            sentence=grammar.sentence
+        ))
+    
+    # Convert grammar topics to simple format
+    topic_list = [
+        GrammarTopicSimple(
+            id=topic.id,
+            video_url=topic.video_url,
+            markdown_text=topic.markdown_text
+        )
+        for topic in grammar_topics
+    ]
+    
+    return PackGrammarResponse(
+        pack_id=pack.id,
+        pack_title=pack.title,
+        pack_type=pack.type.value,
+        lesson_title=lesson_title,
+        grammar_questions=question_list,
+        grammar_topics=topic_list,
+        total_questions=len(question_list),
+        total_topics=len(topic_list),
         user_progress=progress_data
     )
 
