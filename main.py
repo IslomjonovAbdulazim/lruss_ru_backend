@@ -6,7 +6,7 @@ import uvicorn
 import os
 
 from app.database import init_db
-from app.routers import auth, profile, education, quiz, grammar_topics, admin, progress, leaderboard, translation, subscription
+from app.routers import auth, profile, education, quiz, grammar_topics, admin, progress, leaderboard, translation, subscription, dashboard
 from app.telegram_bot import start_bot
 from app.redis_client import close_redis
 from app.routers.leaderboard import start_leaderboard_scheduler, stop_leaderboard_scheduler
@@ -88,6 +88,7 @@ app.include_router(progress.router, prefix="/api/progress", tags=["progress"])
 app.include_router(leaderboard.router, prefix="/api/leaderboard", tags=["leaderboard"])
 app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
 app.include_router(subscription.router, prefix="/api/subscription", tags=["subscription"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 
 # Mount static files for photo serving
 storage_path = os.getenv("STORAGE_PATH", "/tmp/persistent_storage")

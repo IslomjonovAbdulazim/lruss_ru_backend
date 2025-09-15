@@ -567,3 +567,28 @@ class QuizResultResponse(BaseModel):
     best_score: int
     new_personal_best: bool
     completion_message: str
+
+
+# Dashboard/Home Page Schemas
+class UserInfoDashboard(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    avatar: str  # User initials or avatar URL
+    total_points: int
+
+
+class CurrentLessonDashboard(BaseModel):
+    id: int
+    title: str
+    progress_percentage: float
+
+
+class LeaderboardPositionDashboard(BaseModel):
+    current_user_rank: int
+    total_users: int
+
+
+class DashboardHomeResponse(BaseModel):
+    user_info: UserInfoDashboard
+    current_lesson: Optional[CurrentLessonDashboard] = None
+    leaderboard_position: LeaderboardPositionDashboard
