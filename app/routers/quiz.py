@@ -475,7 +475,7 @@ async def submit_word_quiz_result(
             # Invalidate leaderboard cache since user points changed
             await invalidate_leaderboard_cache()
             
-            completion_message = f"New personal best! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+            completion_message = f"Yangi shaxsiy rekord! Siz {quiz_result.total_score}% ball to'pladingiz va {points_earned} ochko oldingiz!"
             
             return QuizResultResponse(
                 points_earned=points_earned,
@@ -486,7 +486,7 @@ async def submit_word_quiz_result(
             )
         else:
             # Score not improved
-            completion_message = f"You scored {quiz_result.total_score}%. Your best score is still {old_score}%."
+            completion_message = f"Siz {quiz_result.total_score}% ball to'pladingiz. Eng yaxshi natijangiz hali ham {old_score}%."
             
             return QuizResultResponse(
                 points_earned=0,
@@ -515,7 +515,7 @@ async def submit_word_quiz_result(
         # Invalidate leaderboard cache since new user points added
         await invalidate_leaderboard_cache()
         
-        completion_message = f"Great job! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+        completion_message = f"Ajoyib! Siz {quiz_result.total_score}% ball to'pladingiz va {points_earned} ochko oldingiz!"
         
         return QuizResultResponse(
             points_earned=points_earned,
@@ -586,7 +586,7 @@ async def submit_grammar_quiz_result(
             # Invalidate leaderboard cache since user points changed
             await invalidate_leaderboard_cache()
             
-            completion_message = f"New personal best! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+            completion_message = f"Yangi shaxsiy rekord! Siz {quiz_result.total_score}% ball to'pladingiz va {points_earned} ochko oldingiz!"
             
             return QuizResultResponse(
                 points_earned=points_earned,
@@ -597,7 +597,7 @@ async def submit_grammar_quiz_result(
             )
         else:
             # Score not improved
-            completion_message = f"You scored {quiz_result.total_score}%. Your best score is still {old_score}%."
+            completion_message = f"Siz {quiz_result.total_score}% ball to'pladingiz. Eng yaxshi natijangiz hali ham {old_score}%."
             
             return QuizResultResponse(
                 points_earned=0,
@@ -626,7 +626,7 @@ async def submit_grammar_quiz_result(
         # Invalidate leaderboard cache since new user points added
         await invalidate_leaderboard_cache()
         
-        completion_message = f"Excellent work! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+        completion_message = f"Zo'r ish! Siz {quiz_result.total_score}% ball to'pladingiz va {points_earned} ochko oldingiz!"
         
         return QuizResultResponse(
             points_earned=points_earned,
