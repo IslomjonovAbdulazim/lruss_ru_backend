@@ -527,3 +527,43 @@ class BusinessProfile(BusinessProfileBase):
 
     class Config:
         from_attributes = True
+
+
+# Quiz Result Schemas
+class WordAnswer(BaseModel):
+    word_id: int
+    user_answer: str  # User's answer (uz or ru text)
+    is_correct: bool
+    time_spent: Optional[int] = None  # Time in seconds
+
+
+class WordQuizResult(BaseModel):
+    pack_id: int
+    answers: List[WordAnswer]
+    total_score: int  # Percentage 0-100
+    time_spent: int  # Total time in seconds
+    completed_at: datetime
+
+
+class GrammarAnswer(BaseModel):
+    grammar_id: int
+    selected_option: Optional[int] = None  # For fill type (0-3)
+    user_sentence: Optional[str] = None  # For build type
+    is_correct: bool
+    time_spent: Optional[int] = None  # Time in seconds
+
+
+class GrammarQuizResult(BaseModel):
+    pack_id: int
+    answers: List[GrammarAnswer]
+    total_score: int  # Percentage 0-100
+    time_spent: int  # Total time in seconds
+    completed_at: datetime
+
+
+class QuizResultResponse(BaseModel):
+    points_earned: int
+    total_points: int
+    best_score: int
+    new_personal_best: bool
+    completion_message: str

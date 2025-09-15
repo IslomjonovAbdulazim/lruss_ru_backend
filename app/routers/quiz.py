@@ -8,17 +8,18 @@ import os
 import aiofiles
 from pathlib import Path
 from app.database import get_db
-from app.models import Pack, Word, Grammar, PackType, GrammarType, User
+from app.models import Pack, Word, Grammar, PackType, GrammarType, User, UserProgress
 from app.schemas import (
     Word as WordSchema, WordCreate, WordUpdate,
     Grammar as GrammarSchema, GrammarCreate, GrammarUpdate,
-    QuizResponse
+    QuizResponse, WordQuizResult, GrammarQuizResult, QuizResultResponse
 )
 from app.dependencies import get_current_user, get_admin_user
 from app.redis_client import (
     get_quiz_cache, set_quiz_cache, invalidate_quiz_cache,
     get_words_cache_by_pack, set_words_cache_by_pack, invalidate_words_cache_by_pack,
-    get_grammars_cache_by_pack, set_grammars_cache_by_pack, invalidate_grammars_cache_by_pack
+    get_grammars_cache_by_pack, set_grammars_cache_by_pack, invalidate_grammars_cache_by_pack,
+    invalidate_leaderboard_cache
 )
 
 router = APIRouter()
@@ -410,3 +411,227 @@ async def delete_grammar(grammar_id: int, admin_user: User = Depends(get_admin_u
     await db.commit()
     await invalidate_grammars_cache_by_pack(grammar.pack_id)
     return {"message": "Grammar deleted successfully"}
+
+
+# QUIZ RESULT SUBMISSION ENDPOINTS
+
+@router.post("/word-quiz/submit", response_model=QuizResultResponse)
+async def submit_word_quiz_result(
+    quiz_result: WordQuizResult,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Submit detailed word quiz results with individual answers tracking"""
+    
+    # Validate pack exists and is a word pack
+    pack_result = await db.execute(select(Pack).where(Pack.id == quiz_result.pack_id))
+    pack = pack_result.scalar_one_or_none()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Pack not found")
+    if pack.type != PackType.WORD:
+        raise HTTPException(status_code=400, detail="Pack is not a word pack")
+    
+    # Validate score range
+    if quiz_result.total_score < 0 or quiz_result.total_score > 100:
+        raise HTTPException(status_code=400, detail="Score must be between 0 and 100")
+    
+    # Validate all word IDs exist in the pack
+    word_ids = [answer.word_id for answer in quiz_result.answers]
+    words_result = await db.execute(
+        select(Word).where(
+            Word.id.in_(word_ids),
+            Word.pack_id == quiz_result.pack_id
+        )
+    )
+    found_words = words_result.scalars().all()
+    if len(found_words) != len(word_ids):
+        raise HTTPException(status_code=400, detail="Some word IDs are invalid for this pack")
+    
+    # Get existing progress
+    existing_result = await db.execute(
+        select(UserProgress).where(
+            UserProgress.user_id == current_user.id,
+            UserProgress.pack_id == quiz_result.pack_id
+        )
+    )
+    existing_progress = existing_result.scalar_one_or_none()
+    
+    new_personal_best = False
+    
+    if existing_progress:
+        # User has previous progress
+        old_score = existing_progress.best_score
+        
+        if quiz_result.total_score > old_score:
+            # New score is better - calculate additional points
+            points_earned = quiz_result.total_score - old_score
+            existing_progress.best_score = quiz_result.total_score
+            existing_progress.total_points += points_earned
+            new_personal_best = True
+            
+            await db.commit()
+            await db.refresh(existing_progress)
+            
+            # Invalidate leaderboard cache since user points changed
+            await invalidate_leaderboard_cache()
+            
+            completion_message = f"New personal best! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+            
+            return QuizResultResponse(
+                points_earned=points_earned,
+                total_points=existing_progress.total_points,
+                best_score=existing_progress.best_score,
+                new_personal_best=new_personal_best,
+                completion_message=completion_message
+            )
+        else:
+            # Score not improved
+            completion_message = f"You scored {quiz_result.total_score}%. Your best score is still {old_score}%."
+            
+            return QuizResultResponse(
+                points_earned=0,
+                total_points=existing_progress.total_points,
+                best_score=existing_progress.best_score,
+                new_personal_best=new_personal_best,
+                completion_message=completion_message
+            )
+    else:
+        # First time playing this pack
+        # Award full points if score >= 90%, otherwise award score points
+        points_earned = 100 if quiz_result.total_score >= 90 else quiz_result.total_score
+        new_personal_best = True
+        
+        new_progress = UserProgress(
+            user_id=current_user.id,
+            pack_id=quiz_result.pack_id,
+            best_score=quiz_result.total_score,
+            total_points=points_earned
+        )
+        
+        db.add(new_progress)
+        await db.commit()
+        await db.refresh(new_progress)
+        
+        # Invalidate leaderboard cache since new user points added
+        await invalidate_leaderboard_cache()
+        
+        completion_message = f"Great job! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+        
+        return QuizResultResponse(
+            points_earned=points_earned,
+            total_points=new_progress.total_points,
+            best_score=new_progress.best_score,
+            new_personal_best=new_personal_best,
+            completion_message=completion_message
+        )
+
+
+@router.post("/grammar-quiz/submit", response_model=QuizResultResponse)
+async def submit_grammar_quiz_result(
+    quiz_result: GrammarQuizResult,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Submit detailed grammar quiz results with individual answers tracking"""
+    
+    # Validate pack exists and is a grammar pack
+    pack_result = await db.execute(select(Pack).where(Pack.id == quiz_result.pack_id))
+    pack = pack_result.scalar_one_or_none()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Pack not found")
+    if pack.type != PackType.GRAMMAR:
+        raise HTTPException(status_code=400, detail="Pack is not a grammar pack")
+    
+    # Validate score range
+    if quiz_result.total_score < 0 or quiz_result.total_score > 100:
+        raise HTTPException(status_code=400, detail="Score must be between 0 and 100")
+    
+    # Validate all grammar IDs exist in the pack
+    grammar_ids = [answer.grammar_id for answer in quiz_result.answers]
+    grammars_result = await db.execute(
+        select(Grammar).where(
+            Grammar.id.in_(grammar_ids),
+            Grammar.pack_id == quiz_result.pack_id
+        )
+    )
+    found_grammars = grammars_result.scalars().all()
+    if len(found_grammars) != len(grammar_ids):
+        raise HTTPException(status_code=400, detail="Some grammar IDs are invalid for this pack")
+    
+    # Get existing progress
+    existing_result = await db.execute(
+        select(UserProgress).where(
+            UserProgress.user_id == current_user.id,
+            UserProgress.pack_id == quiz_result.pack_id
+        )
+    )
+    existing_progress = existing_result.scalar_one_or_none()
+    
+    new_personal_best = False
+    
+    if existing_progress:
+        # User has previous progress
+        old_score = existing_progress.best_score
+        
+        if quiz_result.total_score > old_score:
+            # New score is better - calculate additional points
+            points_earned = quiz_result.total_score - old_score
+            existing_progress.best_score = quiz_result.total_score
+            existing_progress.total_points += points_earned
+            new_personal_best = True
+            
+            await db.commit()
+            await db.refresh(existing_progress)
+            
+            # Invalidate leaderboard cache since user points changed
+            await invalidate_leaderboard_cache()
+            
+            completion_message = f"New personal best! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+            
+            return QuizResultResponse(
+                points_earned=points_earned,
+                total_points=existing_progress.total_points,
+                best_score=existing_progress.best_score,
+                new_personal_best=new_personal_best,
+                completion_message=completion_message
+            )
+        else:
+            # Score not improved
+            completion_message = f"You scored {quiz_result.total_score}%. Your best score is still {old_score}%."
+            
+            return QuizResultResponse(
+                points_earned=0,
+                total_points=existing_progress.total_points,
+                best_score=existing_progress.best_score,
+                new_personal_best=new_personal_best,
+                completion_message=completion_message
+            )
+    else:
+        # First time playing this pack
+        # Award full points if score >= 90%, otherwise award score points
+        points_earned = 100 if quiz_result.total_score >= 90 else quiz_result.total_score
+        new_personal_best = True
+        
+        new_progress = UserProgress(
+            user_id=current_user.id,
+            pack_id=quiz_result.pack_id,
+            best_score=quiz_result.total_score,
+            total_points=points_earned
+        )
+        
+        db.add(new_progress)
+        await db.commit()
+        await db.refresh(new_progress)
+        
+        # Invalidate leaderboard cache since new user points added
+        await invalidate_leaderboard_cache()
+        
+        completion_message = f"Excellent work! You scored {quiz_result.total_score}% and earned {points_earned} points!"
+        
+        return QuizResultResponse(
+            points_earned=points_earned,
+            total_points=new_progress.total_points,
+            best_score=new_progress.best_score,
+            new_personal_best=new_personal_best,
+            completion_message=completion_message
+        )
