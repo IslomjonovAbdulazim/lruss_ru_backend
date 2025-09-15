@@ -573,7 +573,7 @@ class QuizResultResponse(BaseModel):
 class UserInfoDashboard(BaseModel):
     first_name: str
     last_name: Optional[str] = None
-    avatar: str  # User initials or avatar URL
+    avatar: Optional[str] = None  # Avatar URL or null if no avatar
     total_points: int
 
 

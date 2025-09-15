@@ -18,12 +18,11 @@ from app.redis_client import get_leaderboard_cache
 router = APIRouter()
 
 
-def generate_avatar_initials(first_name: str, last_name: Optional[str] = None) -> str:
-    """Generate avatar initials from user's name"""
-    initials = first_name[0].upper() if first_name else "U"
-    if last_name:
-        initials += last_name[0].upper()
-    return initials
+def get_user_avatar(user: User) -> Optional[str]:
+    """Get user's avatar URL or return None if not available"""
+    if user.avatar_url:
+        return user.avatar_url
+    return None
 
 
 async def get_user_total_points(user_id: int, db: AsyncSession) -> int:
@@ -169,8 +168,8 @@ async def get_dashboard_home(
     # Get user's total points
     total_points = await get_user_total_points(current_user.id, db)
     
-    # Generate avatar initials
-    avatar = generate_avatar_initials(current_user.first_name, current_user.last_name)
+    # Get user's avatar (photo path or null)
+    avatar = get_user_avatar(current_user)
     
     # Build user info
     user_info = UserInfoDashboard(

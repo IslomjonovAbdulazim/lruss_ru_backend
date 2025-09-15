@@ -6,7 +6,8 @@ import uvicorn
 import os
 
 from app.database import init_db
-from app.routers import auth, profile, education, quiz, grammar_topics, admin, progress, leaderboard, translation, subscription, dashboard
+from app.routers import auth, profile, education, quiz, grammar_topics, admin, progress, leaderboard, translation, subscription
+from app.routers import dashboard
 from app.telegram_bot import start_bot
 from app.redis_client import close_redis
 from app.routers.leaderboard import start_leaderboard_scheduler, stop_leaderboard_scheduler
