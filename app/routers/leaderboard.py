@@ -28,10 +28,11 @@ async def calculate_leaderboard(db: AsyncSession) -> Dict[str, Any]:
             User.id,
             User.first_name,
             User.last_name,
+            User.avatar_url,
             func.sum(UserProgress.total_points).label('total_points')
         )
         .join(UserProgress, User.id == UserProgress.user_id)
-        .group_by(User.id, User.first_name, User.last_name)
+        .group_by(User.id, User.first_name, User.last_name, User.avatar_url)
         .order_by(func.sum(UserProgress.total_points).desc())
     )
     
@@ -45,6 +46,7 @@ async def calculate_leaderboard(db: AsyncSession) -> Dict[str, Any]:
             "user_id": user_data.id,
             "first_name": user_data.first_name,
             "last_name": user_data.last_name,
+            "avatar_url": user_data.avatar_url,
             "total_points": user_data.total_points or 0,
             "rank": rank
         }

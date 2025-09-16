@@ -280,6 +280,7 @@ class LeaderboardUser(BaseModel):
     user_id: int
     first_name: str
     last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
     total_points: int
     rank: int
 
