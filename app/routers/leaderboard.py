@@ -55,9 +55,7 @@ async def calculate_leaderboard(db: AsyncSession) -> Dict[str, Any]:
     
     # Generate timestamps
     now = datetime.utcnow()
-    # Calculate next 3-minute interval
-    minutes_to_next = 3 - (now.minute % 3)
-    next_update = now.replace(second=0, microsecond=0) + timedelta(minutes=minutes_to_next)
+    next_update = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
     
     return {
         "leaderboard": leaderboard,
@@ -86,10 +84,10 @@ def start_leaderboard_scheduler():
     if scheduler is None:
         scheduler = AsyncIOScheduler()
         
-        # Schedule to run every 3 minutes
+        # Schedule to run every hour
         scheduler.add_job(
             update_leaderboard_cache,
-            trigger=IntervalTrigger(minutes=3),
+            trigger=IntervalTrigger(hours=1),
             id='leaderboard_update',
             name='Update Leaderboard Cache',
             replace_existing=True

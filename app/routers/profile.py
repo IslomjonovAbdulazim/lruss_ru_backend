@@ -10,7 +10,7 @@ from app.models import User
 from app.schemas import User as UserSchema, UserUpdate
 from app.dependencies import get_current_user
 from app.utils import sanitize_name
-from app.redis_client import invalidate_users_cache
+from app.redis_client import invalidate_users_cache, invalidate_leaderboard_cache
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -49,8 +49,9 @@ async def update_profile(
     await db.commit()
     await db.refresh(current_user)
     
-    # Invalidate users cache since user data was updated
+    # Invalidate caches since user data was updated
     await invalidate_users_cache()
+    await invalidate_leaderboard_cache()  # User name might have changed
     
     return current_user
 
@@ -81,8 +82,9 @@ async def refresh_avatar(
         await db.commit()
         await db.refresh(current_user)
         
-        # Invalidate users cache since user data was updated
+        # Invalidate caches since user data was updated
         await invalidate_users_cache()
+        await invalidate_leaderboard_cache()  # User name/avatar might have changed
         
         return current_user
         
@@ -159,8 +161,9 @@ async def upload_photo(
         await db.refresh(current_user)
         print(f"✅ Database updated for user {current_user.id}")
         
-        # Invalidate users cache
+        # Invalidate caches since avatar was updated
         await invalidate_users_cache()
+        await invalidate_leaderboard_cache()  # Avatar changed in leaderboard
         
         return current_user
         
