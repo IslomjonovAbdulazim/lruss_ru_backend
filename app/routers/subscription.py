@@ -101,19 +101,10 @@ async def check_subscription(
     version_comparison = version_compare(app_version, required_version)
 
     if version_comparison >= 0:
-        # User has newer/equal version -> give mock premium (24 hours)
-        now = datetime.utcnow()
-        mock_end_date = now + timedelta(hours=24)
-
+        # User has newer/equal version -> just grant premium access (no mock subscription)
         result = SubscriptionStatus(
             has_premium=True,
-            subscription={
-                "start_date": now.isoformat(),
-                "end_date": mock_end_date.isoformat(),
-                "is_mock": True,
-                "days_remaining": 1,
-                "reason": f"App version {app_version} eligible for premium access"
-            },
+            subscription=None,
             message="Premium access granted for updated app version"
         )
         
