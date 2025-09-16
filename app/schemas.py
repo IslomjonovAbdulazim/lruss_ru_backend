@@ -485,6 +485,7 @@ class SubscriptionStatus(BaseModel):
     has_premium: bool
     subscription: Optional[dict] = None
     message: str
+    admin_contact: Optional[str] = None
 
 
 class FinancialStats(BaseModel):

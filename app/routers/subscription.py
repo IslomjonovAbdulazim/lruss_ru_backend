@@ -156,10 +156,14 @@ async def check_subscription(
                 message="Active premium subscription"
             )
         else:
+            # Get admin contact from environment
+            admin_contact = os.getenv("ADMIN_CONTACT", "https://t.me/admin_support")
+            
             result = SubscriptionStatus(
                 has_premium=False,
                 subscription=None,
-                message="No active premium subscription"
+                message="No active premium subscription",
+                admin_contact=admin_contact
             )
             
         # Cache the result
