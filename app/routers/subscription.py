@@ -76,6 +76,53 @@ async def get_business_profile(db: AsyncSession) -> BusinessProfile:
     return profile
 
 
+# CHECK PREMIUM STATUS BY TELEGRAM ID (NO AUTH REQUIRED)
+@router.get("/check-premium")
+async def check_premium_by_telegram_id(telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
+    """Check if user has premium subscription by telegram_id (no authentication required)"""
+    # Find user by telegram_id
+    user_result = await db.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check for active subscription
+    now = datetime.utcnow()
+    db_result = await db.execute(
+        select(UserSubscription)
+        .where(
+            and_(
+                UserSubscription.user_id == user.id,
+                UserSubscription.is_active == True,
+                UserSubscription.end_date > now
+            )
+        )
+        .order_by(UserSubscription.end_date.desc())
+    )
+    active_sub = db_result.scalars().first()
+    
+    if active_sub:
+        days_remaining = (active_sub.end_date - now).days
+        return {
+            "has_premium": True,
+            "telegram_id": telegram_id,
+            "subscription": {
+                "end_date": active_sub.end_date.isoformat(),
+                "days_remaining": max(0, days_remaining),
+                "amount_paid": active_sub.amount,
+                "currency": active_sub.currency
+            }
+        }
+    else:
+        return {
+            "has_premium": False,
+            "telegram_id": telegram_id,
+            "subscription": None
+        }
+
+
 @router.get("/check", response_model=SubscriptionStatus)
 async def check_subscription(
         app_version: str = Query(..., description="Current app version (e.g., 1.2.3)"),

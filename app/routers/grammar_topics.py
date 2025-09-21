@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
+from datetime import datetime
 from app.database import get_db
-from app.models import Pack, GrammarTopic, PackType, User
+from app.models import Pack, GrammarTopic, PackType, User, UserSubscription
 from app.schemas import (
     GrammarTopic as GrammarTopicSchema,
     GrammarTopicCreate,
@@ -63,6 +64,50 @@ async def get_grammar_topic_by_pack(pack_id: int = Query(...), current_user: Use
     if not topic:
         raise HTTPException(status_code=404, detail="Grammar topic not found for this pack")
     return topic
+
+
+# GET VIDEO URL BY TOPIC ID (PREMIUM REQUIRED)
+@router.get("/topics/{topic_id}/video")
+async def get_video_url_by_topic_id(topic_id: int, telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
+    """Get video URL for specific grammar topic by ID (premium subscription required)"""
+    # First, find user by telegram_id
+    user_result = await db.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check for active premium subscription
+    now = datetime.utcnow()
+    subscription_result = await db.execute(
+        select(UserSubscription)
+        .where(
+            and_(
+                UserSubscription.user_id == user.id,
+                UserSubscription.is_active == True,
+                UserSubscription.end_date > now
+            )
+        )
+        .order_by(UserSubscription.end_date.desc())
+    )
+    active_subscription = subscription_result.scalars().first()
+    
+    if not active_subscription:
+        raise HTTPException(
+            status_code=403, 
+            detail="Premium subscription required to access video content"
+        )
+    
+    # User has premium, get the video URL
+    video_result = await db.execute(
+        select(GrammarTopic.video_url).where(GrammarTopic.id == topic_id)
+    )
+    video_url = video_result.scalar_one_or_none()
+    if not video_url:
+        raise HTTPException(status_code=404, detail="Grammar topic not found or no video URL available")
+    
+    return {"video_url": video_url}
 
 
 # GRAMMAR TOPIC CRUD
